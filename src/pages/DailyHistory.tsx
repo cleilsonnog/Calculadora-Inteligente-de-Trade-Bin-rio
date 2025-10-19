@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, HTMLAttributes } from "react";
 import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,17 +11,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
   ArrowLeft,
-  Calendar,
+  Calendar as CalendarIcon,
   TrendingUp,
   Target,
   AlertCircle,
   Clock,
   PlusCircle,
   MinusCircle,
+  Filter,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
+import { DateRange } from "react-day-picker";
 import { ptBR } from "date-fns/locale";
 
 // Interface atualizada para incluir user_id, embora não seja exibido na UI
@@ -51,6 +61,7 @@ const DailyHistory = () => {
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(
     null
   );
+  const [date, setDate] = useState<DateRange | undefined>(undefined);
   const [individualOps, setIndividualOps] = useState<IndividualOperation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingOps, setLoadingOps] = useState(false);
@@ -60,7 +71,7 @@ const DailyHistory = () => {
   useEffect(() => {
     fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date]); // ⬅️ Refetch when date range changes
 
   const fetchHistory = async () => {
     try {
@@ -72,11 +83,27 @@ const DailyHistory = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("historico_operacoes")
         .select("*")
-        .eq("user_id", user.id)
-        .order("data", { ascending: false });
+        .eq("user_id", user.id);
+
+      // 🔹 Adiciona o filtro de data se um período for selecionado
+      if (date?.from) {
+        const fromDate = date.from.toISOString().split("T")[0];
+        // Se 'to' não existir, o usuário selecionou um único dia.
+        if (!date.to) {
+          query = query.eq("data", fromDate);
+        } else {
+          // Se 'to' existir, é um intervalo.
+          const toDate = date.to.toISOString().split("T")[0];
+          query = query.gte("data", fromDate).lte("data", toDate);
+        }
+      }
+
+      const { data, error } = await query.order("data", {
+        ascending: false,
+      });
 
       if (error) throw error;
       setRecords(data || []);
@@ -160,7 +187,9 @@ const DailyHistory = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "dd 'de' MMMM 'de' yyyy", {
+    // 🔹 CORREÇÃO: Substitui hífens por barras para evitar problemas de fuso horário (UTC)
+    const localDate = new Date(dateString.replace(/-/g, "/"));
+    return format(localDate, "dd 'de' MMMM 'de' yyyy", {
       locale: ptBR,
     });
   };
@@ -178,28 +207,78 @@ const DailyHistory = () => {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
+      <div className="max-w-6xl mx-auto animate-fade-in">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => navigate("/")}
             className="hover-scale"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-6 w-6" />
           </Button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold">Histórico Diário</h1>
             <p className="text-muted-foreground">
-              Acompanhe seus resultados ao longo do tempo
+              Filtre e analise seus resultados
             </p>
+          </div>
+
+          {/* 🔹 COMPONENTE DE FILTRO DE DATA 🔹 */}
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  id="date"
+                  variant={"outline"}
+                  className={cn(
+                    "w-[260px] justify-start text-left font-normal",
+                    !date && "text-muted-foreground"
+                  )}
+                >
+                  <Filter className="mr-2 h-4 w-4" />
+                  {date?.from ? (
+                    date.to ? (
+                      <>
+                        {format(date.from, "LLL dd, y")} -{" "}
+                        {format(date.to, "LLL dd, y")}
+                      </>
+                    ) : (
+                      format(date.from, "LLL dd, y")
+                    )
+                  ) : (
+                    <span>Filtrar por período</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <CalendarComponent
+                  initialFocus
+                  mode="range"
+                  defaultMonth={date?.from}
+                  selected={date}
+                  onSelect={setDate}
+                  numberOfMonths={2}
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+            {date && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDate(undefined)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
 
         {records.length === 0 ? (
           <Card className="animate-fade-in">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <Calendar className="h-16 w-16 text-muted-foreground mb-4" />
+              <CalendarIcon className="h-16 w-16 text-muted-foreground mb-4" />
               <h3 className="text-xl font-semibold mb-2">
                 Nenhum registro ainda
               </h3>
@@ -209,7 +288,7 @@ const DailyHistory = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 animate-fade-in">
             {records.map((record, index) => {
               const statusConfig = getStatusConfig(record.status);
               const StatusIcon = statusConfig.icon;
@@ -228,8 +307,12 @@ const DailyHistory = () => {
                     <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-lg">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4" />
-                          {format(new Date(record.data), "dd/MM/yyyy")}
+                          <CalendarIcon className="h-4 w-4" />
+                          {/* 🔹 CORREÇÃO: Substitui hífens por barras para evitar problemas de fuso horário (UTC) */}
+                          {format(
+                            new Date(record.data.replace(/-/g, "/")),
+                            "dd/MM/yyyy"
+                          )}
                         </div>
                         {/* 🔹 Sessão aparece ao lado ou abaixo da data */}
                         {record.sessao && (
@@ -286,7 +369,7 @@ const DailyHistory = () => {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
+                <CalendarIcon className="h-5 w-5" />
                 Detalhes do Dia
               </DialogTitle>
             </DialogHeader>

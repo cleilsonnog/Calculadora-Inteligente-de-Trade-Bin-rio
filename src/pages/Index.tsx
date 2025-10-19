@@ -111,7 +111,12 @@ const Index = () => {
           statusOverride ||
           (goalReached ? "Meta" : stopLossReached ? "Stop" : "Em aberto");
 
-        const today = new Date().toISOString().split("T")[0];
+        // 🔹 CORREÇÃO: Gera a data no formato YYYY-MM-DD usando o fuso horário local
+        const localDate = new Date();
+        const year = localDate.getFullYear();
+        const month = String(localDate.getMonth() + 1).padStart(2, "0"); // getMonth() é 0-indexado
+        const day = String(localDate.getDate()).padStart(2, "0");
+        const today = `${year}-${month}-${day}`;
 
         // 🔹 Converte operações para garantir JSON serializável (Date -> ISO string)
         const safeOperations = operationsRef.current.map((op) => ({
