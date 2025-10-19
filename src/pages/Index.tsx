@@ -107,7 +107,7 @@ const Index = () => {
       }
 
       try {
-        const status =
+        let status =
           statusOverride ||
           (goalReached ? "Meta" : stopLossReached ? "Stop" : "Em aberto");
 
@@ -122,12 +122,6 @@ const Index = () => {
               ? op.timestamp.toISOString()
               : op.timestamp,
         }));
-
-        // 🔹 Soma total de lucros do dia (baseado nas operações da sessão atual)
-        const dailyTotalProfit = safeOperations.reduce(
-          (acc, op) => acc + (Number(op.profitLoss) || 0),
-          0
-        );
 
         // 🔹 Conta quantas sessões já existem hoje para este usuário (tolerante)
         let sessionNumber = 1;
@@ -172,7 +166,7 @@ const Index = () => {
           sessao: sessionName,
           banca_inicial: config.initialBankroll,
           banca_final: bankrollRef.current,
-          lucro_total: dailyTotalProfit,
+          lucro_total: totalProfitRef.current,
           status,
           operacoes: JSON.stringify(safeOperations),
         };
@@ -181,7 +175,7 @@ const Index = () => {
         const insertResp = await supabase
           .from("historico_operacoes")
           .insert(sessionData)
-          .select(); // opcional: retorna o registro inserido para confirmar
+          .select("id"); // 🔹 Retorna apenas o ID do registro inserido
 
         if (insertResp.error) {
           // log completo para debugging
@@ -196,16 +190,42 @@ const Index = () => {
           return;
         }
 
+        // 🔹 Pega o ID da sessão que acabamos de criar
+        const newHistoricoId = insertResp.data?.[0]?.id;
+        if (!newHistoricoId) {
+          toast.error("Falha ao obter ID da sessão para salvar operações.");
+          return;
+        }
+
+        // 🔹 Prepara as operações individuais para inserção em lote
+        const individualOpsToSave = operationsRef.current.map((op) => ({
+          user_id: user.id,
+          historico_id: newHistoricoId, // ⬅️ VINCULANDO A OPERAÇÃO À SESSÃO!
+          entry_value: op.entryValue,
+          result: op.result,
+          profit_loss: op.profitLoss,
+          bankroll_after: op.bankrollAfter,
+        }));
+
+        // 🔹 Insere todas as operações individuais de uma vez
+        const { error: opsError } = await supabase
+          .from("operacoes_individuais")
+          .insert(individualOpsToSave);
+
+        if (opsError) {
+          console.error("Erro ao salvar operações individuais:", opsError);
+          toast.error("Sessão salva, mas as operações individuais falharam.");
+        }
+
         // sucesso
         setIsSessionSaved(true);
         toast.success(`💾 Histórico salvo com sucesso (${sessionName})!`);
-        console.log("saveDailyHistory: inserido com sucesso:", insertResp.data);
       } catch (err) {
         console.error("saveDailyHistory: erro inesperado:", err);
         toast.error("Erro inesperado ao salvar histórico. Ver console.");
       }
     },
-    [config, user, goalReached, stopLossReached]
+    [config, user, goalReached, stopLossReached] // Removido bankroll e totalProfit para evitar stale state
   );
 
   useEffect(() => {
@@ -275,16 +295,17 @@ const Index = () => {
     const initialEntry =
       (config.initialBankroll * config.entryPercentage) / 100;
 
-    const operation: TradeOperation = {
-      id: operations.length + 1,
-      entryValue: currentEntry,
-      result: "win",
-      profitLoss: profit,
-      bankrollAfter: newBankroll,
-      timestamp: new Date(),
-    };
-
-    setOperations([operation, ...operations]);
+    setOperations((prevOps) => [
+      {
+        id: Date.now(),
+        entryValue: currentEntry,
+        result: "win",
+        profitLoss: profit,
+        bankrollAfter: newBankroll,
+        timestamp: new Date(),
+      },
+      ...prevOps,
+    ]);
     setBankroll(newBankroll);
     setCurrentEntry(initialEntry);
     setIsSessionSaved(false); // Permite salvar novamente após nova operação
@@ -305,16 +326,17 @@ const Index = () => {
       (config.initialBankroll * config.entryPercentage) / 100;
     const nextEntry = (currentEntry + desiredProfit) / (config.payout / 100);
 
-    const operation: TradeOperation = {
-      id: operations.length + 1,
-      entryValue: currentEntry,
-      result: "loss",
-      profitLoss: -loss,
-      bankrollAfter: newBankroll,
-      timestamp: new Date(),
-    };
-
-    setOperations([operation, ...operations]);
+    setOperations((prevOps) => [
+      {
+        id: Date.now(),
+        entryValue: currentEntry,
+        result: "loss",
+        profitLoss: -loss,
+        bankrollAfter: newBankroll,
+        timestamp: new Date(),
+      },
+      ...prevOps,
+    ]);
     setBankroll(newBankroll);
     setCurrentEntry(nextEntry);
     setIsSessionSaved(false); // Permite salvar novamente após nova operação

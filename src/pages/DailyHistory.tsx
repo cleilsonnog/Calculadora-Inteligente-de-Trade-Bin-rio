@@ -16,6 +16,8 @@ import {
   Target,
   AlertCircle,
   Clock,
+  PlusCircle,
+  MinusCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -34,12 +36,24 @@ interface HistoryRecord {
   sessao?: string | null;
 }
 
+// Interface para as operações individuais que vamos buscar
+interface IndividualOperation {
+  id: string;
+  entry_value: number;
+  result: "win" | "loss";
+  profit_loss: number;
+  bankroll_after: number;
+  created_at: string;
+}
+
 const DailyHistory = () => {
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(
     null
   );
+  const [individualOps, setIndividualOps] = useState<IndividualOperation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOps, setLoadingOps] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -75,6 +89,40 @@ const DailyHistory = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Função para buscar as operações individuais de uma sessão
+  const fetchIndividualOperations = async (historyId: string) => {
+    if (!historyId) return;
+
+    setLoadingOps(true);
+    setIndividualOps([]); // Limpa operações antigas
+
+    try {
+      const { data, error } = await supabase
+        .from("operacoes_individuais")
+        .select("*")
+        .eq("historico_id", historyId)
+        .order("created_at", { ascending: true }); // Ordena da mais antiga para a mais nova
+
+      if (error) throw error;
+
+      setIndividualOps(
+        (data || []).map((op) => ({
+          ...op,
+          result: op.result === "win" ? "win" : "loss",
+        }))
+      );
+    } catch (error) {
+      console.error("Error fetching individual operations:", error);
+      toast({
+        title: "Erro ao carregar operações",
+        description: "Não foi possível buscar os detalhes desta sessão.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingOps(false);
     }
   };
 
@@ -171,7 +219,10 @@ const DailyHistory = () => {
                   key={record.id}
                   className={`cursor-pointer transition-all hover-scale animate-fade-in border ${statusConfig.bgColor}`}
                   style={{ animationDelay: `${index * 0.05}s` }}
-                  onClick={() => setSelectedRecord(record)}
+                  onClick={() => {
+                    setSelectedRecord(record);
+                    fetchIndividualOperations(record.id); // ⬅️ BUSCA AS OPERAÇÕES AO CLICAR
+                  }}
                 >
                   <CardHeader>
                     <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-lg">
@@ -228,7 +279,9 @@ const DailyHistory = () => {
 
         <Dialog
           open={!!selectedRecord}
-          onOpenChange={() => setSelectedRecord(null)}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setSelectedRecord(null);
+          }}
         >
           <DialogContent className="max-w-md">
             <DialogHeader>
@@ -297,6 +350,61 @@ const DailyHistory = () => {
                     </p>
                   </div>
                 )}
+
+                {/* SEÇÃO PARA OPERAÇÕES INDIVIDUAIS */}
+                <div className="pt-4 border-t border-border">
+                  <h4 className="text-sm font-semibold mb-3">
+                    Operações da Sessão
+                  </h4>
+                  {loadingOps ? (
+                    <div className="text-center text-muted-foreground text-sm py-4">
+                      Carregando operações...
+                    </div>
+                  ) : individualOps.length > 0 ? (
+                    <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                      {individualOps.map((op) => (
+                        <div
+                          key={op.id}
+                          className={`flex items-center justify-between p-2 rounded-md text-sm ${
+                            op.result === "win"
+                              ? "bg-green-500/10"
+                              : "bg-red-500/10"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {op.result === "win" ? (
+                              <PlusCircle className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <MinusCircle className="h-4 w-4 text-red-500" />
+                            )}
+                            <span>
+                              {format(new Date(op.created_at), "HH:mm:ss")}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-muted-foreground">
+                              Entrada: {formatCurrency(op.entry_value)}
+                            </span>
+                            <span
+                              className={`font-bold ${
+                                op.result === "win"
+                                  ? "text-green-500"
+                                  : "text-red-500"
+                              }`}
+                            >
+                              {formatCurrency(op.profit_loss)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground text-sm py-4">
+                      Nenhuma operação individual encontrada para esta sessão.
+                    </p>
+                  )}
+                </div>
+
                 <Button
                   onClick={() => setSelectedRecord(null)}
                   variant="outline"
