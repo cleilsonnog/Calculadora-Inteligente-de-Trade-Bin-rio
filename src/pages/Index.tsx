@@ -346,6 +346,36 @@ const Index = () => {
     });
   };
 
+  const handleConservativeLoss = () => {
+    if (!config) return;
+
+    const loss = currentEntry;
+    const newBankroll = bankroll - loss;
+
+    // Lógica conservadora: retorna para a entrada inicial, igual ao 'handleWin'
+    const initialEntry =
+      (config.initialBankroll * config.entryPercentage) / 100;
+
+    setOperations((prevOps) => [
+      {
+        id: Date.now(),
+        entryValue: currentEntry,
+        result: "loss", // O resultado ainda é uma perda
+        profitLoss: -loss,
+        bankrollAfter: newBankroll,
+        timestamp: new Date(),
+      },
+      ...prevOps,
+    ]);
+    setBankroll(newBankroll);
+    setCurrentEntry(initialEntry); // ⬅️ AQUI ESTÁ A DIFERENÇA
+    setIsSessionSaved(false);
+
+    toast.error(`❌ Loss (Conservador)! -R$ ${loss.toFixed(2)}`, {
+      duration: 2000,
+    });
+  };
+
   const handleReset = () => {
     if (!config) return;
 
@@ -469,6 +499,7 @@ const Index = () => {
           currentEntry={currentEntry}
           onWin={handleWin}
           onLoss={handleLoss}
+          onConservativeLoss={handleConservativeLoss} // ⬅️ Passando a nova função
           onReset={handleReset}
           disabled={goalReached || stopLossReached}
         />

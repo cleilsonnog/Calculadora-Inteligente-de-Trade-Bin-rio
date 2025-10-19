@@ -1,11 +1,19 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, RotateCcw, TrendingUp } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  RotateCcw,
+  TrendingUp,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 
 interface TradeControlsProps {
   currentEntry: number;
   onWin: () => void;
   onLoss: () => void;
+  onConservativeLoss: () => void;
   onReset: () => void;
   disabled: boolean;
 }
@@ -14,6 +22,7 @@ export const TradeControls = ({
   currentEntry,
   onWin,
   onLoss,
+  onConservativeLoss,
   onReset,
   disabled,
 }: TradeControlsProps) => {
@@ -33,36 +42,48 @@ export const TradeControls = ({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Button
             onClick={onWin}
             disabled={disabled}
-            size="lg"
-            className="h-16 text-lg gradient-success glow-success disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-green-500 hover:bg-green-600 text-white text-lg py-6 flex flex-col h-full gap-2"
           >
-            <CheckCircle className="w-6 h-6 mr-2" />
-            Win
+            <ThumbsUp /> Win
           </Button>
+
+          {/* Agrupamento dos Botões de Loss */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              onClick={onLoss}
+              disabled={disabled}
+              className="bg-red-500 hover:bg-red-600 text-white text-lg py-6 flex flex-col h-full"
+            >
+              <div className="flex items-center gap-2">
+                <ThumbsDown /> Loss
+              </div>
+              <span className="text-xs font-normal">(Martingale)</span>
+            </Button>
+            <Button
+              onClick={onConservativeLoss}
+              disabled={disabled}
+              variant="destructive"
+              className="bg-red-700 hover:bg-red-800 text-white text-lg py-6 flex flex-col h-full"
+            >
+              <div className="flex items-center gap-2">
+                <ThumbsDown /> Loss
+              </div>
+              <span className="text-xs font-normal">(Conservador)</span>
+            </Button>
+          </div>
 
           <Button
-            onClick={onLoss}
-            disabled={disabled}
-            size="lg"
-            className="h-16 text-lg gradient-danger glow-danger disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={onReset}
+            variant="outline"
+            className="text-lg py-6 flex flex-col h-full gap-2"
           >
-            <XCircle className="w-6 h-6 mr-2" />
-            Loss
+            <RotateCcw /> Resetar Dia
           </Button>
         </div>
-
-        <Button
-          onClick={onReset}
-          variant="outline"
-          className="w-full"
-        >
-          <RotateCcw className="w-4 h-4 mr-2" />
-          Resetar Banca
-        </Button>
       </CardContent>
     </Card>
   );
