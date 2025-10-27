@@ -212,7 +212,7 @@ const DailyHistory = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/app")}
             className="hover-scale"
           >
             <ArrowLeft className="h-6 w-6" />

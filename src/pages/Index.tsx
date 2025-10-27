@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useBeforeUnload } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { ConfigPanel } from "@/components/ConfigPanel";
-import { TradeControls } from "@/components/TradeControls";
-import { StatsDisplay } from "@/components/StatsDisplay";
-import { HistoryTable } from "@/components/HistoryTable";
-import { Button } from "@/components/ui/button";
+import { supabase } from "../integrations/supabase/client";
+import { ConfigPanel } from "../components/ConfigPanel";
+import { TradeControls } from "../components/TradeControls";
+import { StatsDisplay } from "../components/StatsDisplay";
+import { HistoryTable } from "../components/HistoryTable";
+import { Button } from "../components/ui/button";
 import { toast } from "sonner";
-import { TrendingUp, Settings, LogOut, History } from "lucide-react";
+import { TrendingUp, Settings, LogOut, History, Home } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
 export interface TradeConfig {
@@ -408,6 +408,10 @@ const Index = () => {
     navigate("/");
   };
 
+  const handleGoToLanding = () => {
+    navigate("/?fromApp=true"); // Navega para a landing page com um sinalizador
+  };
+
   const progressPercentage = config
     ? (totalProfit / ((config.initialBankroll * config.dailyGoal) / 100)) * 100
     : 0;
@@ -478,6 +482,16 @@ const Index = () => {
                 className="border-primary/20"
               >
                 <Settings className="w-4 h-4" />
+              </Button>
+              {/* Novo botão para ir para a Landing Page */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleGoToLanding}
+                className="border-primary/20"
+                title="Ir para a Página Inicial"
+              >
+                <Home className="w-4 h-4" />
               </Button>
               <Button
                 variant="outline"

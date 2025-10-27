@@ -1,11 +1,46 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
-import { TrendingUp, Target, Shield, History } from "lucide-react";
-import { useEffect } from "react";
+import {
+  TrendingUp,
+  Target,
+  Shield,
+  History,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { getStripe } from "@/integrations/stripe/client";
+import { Stripe } from "@stripe/stripe-js";
+import { toast } from "sonner";
 
 const Landing = () => {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState<string | null>(null);
+
+  // Efeito para redirecionar usuários logados da landing page para o app
+  useEffect(() => {
+    const checkUserAndRedirect = async () => {
+      // Verifica se o usuário veio explicitamente do app para a landing page
+      const urlParams = new URLSearchParams(window.location.search);
+      const cameFromAppExplicitly = urlParams.get("fromApp") === "true";
+
+      // Se o usuário veio explicitamente do app, não redireciona de volta
+      if (cameFromAppExplicitly) {
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        // Redireciona apenas se o usuário logado acessou a landing page diretamente (sem o sinalizador)
+        navigate("/app");
+      }
+    };
+    checkUserAndRedirect();
+  }, [navigate]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -46,6 +81,59 @@ const Landing = () => {
     },
   ];
 
+  // Função para lidar com a navegação dos botões da landing page
+  const handleAuthOrAppNavigation = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session) {
+      // Se o usuário já estiver logado, leva para o app
+      navigate("/app");
+    } else {
+      // Se não estiver logado, leva para a página de autenticação
+      navigate("/auth");
+    }
+  }, [navigate]);
+
+  const handleCheckout = async (priceId: string) => {
+    setLoading(priceId);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        toast.info("Você precisa fazer login para iniciar um teste.");
+        navigate("/auth");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "create-checkout-session",
+        { body: { priceId } }
+      );
+
+      if (error) throw error;
+      const stripe = await getStripe();
+      if (!stripe) throw new Error("Stripe.js not loaded");
+
+      // Redirect to Stripe Checkout
+      await stripe.redirectToCheckout({ sessionId: data.sessionId });
+    } catch (error: unknown) {
+      console.error("Error during checkout:", error);
+
+      if (error instanceof Error) {
+        toast.error("Ocorreu um erro ao iniciar o pagamento.", {
+          description: error.message,
+        });
+      } else {
+        toast.error("Ocorreu um erro inesperado ao iniciar o pagamento.");
+      }
+    } finally {
+      setLoading(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Fundo com Parallax */}
@@ -84,7 +172,7 @@ const Landing = () => {
             <Button
               size="lg"
               className="text-lg px-8 py-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-              onClick={() => navigate("/auth")}
+              onClick={handleAuthOrAppNavigation}
             >
               Começar Agora
             </Button>
@@ -115,6 +203,91 @@ const Landing = () => {
           </div>
         </section>
 
+        {/* SEÇÃO DE PLANOS */}
+        <section id="planos" className="container mx-auto px-4 py-16 md:py-24">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
+            Escolha o Plano Ideal para Você
+          </h2>
+          <p className="text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
+            Comece com 7 dias gratuitos. Cancele a qualquer momento.
+          </p>
+
+          <div className="flex flex-col md:flex-row justify-center items-center gap-8">
+            {/* Plano Mensal */}
+            <Card className="p-8 border-primary/50 shadow-lg w-full max-w-sm text-center transform hover:scale-105 transition-transform duration-300">
+              <h3 className="text-2xl font-bold mb-2">Plano Mensal</h3>
+              <p className="text-4xl font-extrabold mb-4">
+                R$ 7,99<span className="text-lg font-medium">/mês</span>
+              </p>
+              <ul className="space-y-3 text-left mb-8">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Acesso a todas as funcionalidades.
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Histórico ilimitado de operações.
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Suporte prioritário.
+                </li>
+              </ul>
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={() => handleCheckout("price_1SMaAS3sCFRPzKU4ihar6glO")} // ⚠️ SUBSTITUA PELO SEU PRICE ID MENSAL
+                disabled={loading === "price_1SMaAS3sCFRPzKU4ihar6glO"}
+              >
+                {loading === "price_1SMaAS3sCFRPzKU4ihar6glO" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Aguarde...
+                  </>
+                ) : (
+                  "Começar Teste Gratuito"
+                )}
+              </Button>
+            </Card>
+
+            {/* Plano Anual */}
+            <Card className="p-8 border-2 border-primary shadow-xl w-full max-w-sm text-center relative">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-semibold">
+                Mais Popular
+              </div>
+              <h3 className="text-2xl font-bold mb-2">Plano Anual</h3>
+              <p className="text-4xl font-extrabold mb-4">
+                R$ 50,99<span className="text-lg font-medium">/ano</span>
+              </p>
+              <ul className="space-y-3 text-left mb-8">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Tudo do plano mensal.
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Economize 40% em relação ao plano mensal.
+                </li>
+              </ul>
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={() => handleCheckout("price_1SMaAS3sCFRPzKU4EFe7YbOT")} // ⚠️ SUBSTITUA PELO SEU PRICE ID ANUAL
+                disabled={loading === "price_1SMaAS3sCFRPzKU4EFe7YbOT"}
+              >
+                {loading === "price_1SMaAS3sCFRPzKU4EFe7YbOT" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Aguarde...
+                  </>
+                ) : (
+                  "Começar Teste Gratuito"
+                )}
+              </Button>
+            </Card>
+          </div>
+        </section>
+
         {/* Benefícios */}
         <section className="container mx-auto px-4 py-16 md:py-24 bg-primary/5 rounded-3xl my-16 text-center">
           <div className="max-w-4xl mx-auto space-y-6 animate-fade-slide-up">
@@ -131,7 +304,7 @@ const Landing = () => {
               size="lg"
               variant="outline"
               className="mt-6"
-              onClick={() => navigate("/auth")}
+              onClick={handleAuthOrAppNavigation}
             >
               Acessar Plataforma
             </Button>

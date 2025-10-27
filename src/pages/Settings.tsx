@@ -82,7 +82,7 @@ const Settings = () => {
         <Button
           variant="ghost"
           onClick={() => navigate("/")}
-          className="mb-6 animate-fade-in"
+          className="mb-6 animate-fade-in" // Redireciona para a calculadora
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Voltar
