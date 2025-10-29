@@ -234,7 +234,7 @@ const Index = () => {
   );
 
   useEffect(() => {
-    if (!config) return;
+     if (!config || operations.length === 0) return;
 
     // Calcula lucro atual
     let currentProfit = bankroll - config.initialBankroll;
