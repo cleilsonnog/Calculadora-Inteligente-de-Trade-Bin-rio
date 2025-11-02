@@ -8,7 +8,7 @@ import { HistoryTable } from "../components/HistoryTable";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { TrendingUp, Settings, LogOut, History, Home } from "lucide-react";
-import type { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface TradeConfig {
   payout: number;
@@ -29,8 +29,6 @@ export interface TradeOperation {
 
 const Index = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<TradeConfig | null>(null);
   const [bankroll, setBankroll] = useState(0);
   const [currentEntry, setCurrentEntry] = useState(0);
@@ -39,6 +37,11 @@ const Index = () => {
   const [goalReached, setGoalReached] = useState(false);
   const [stopLossReached, setStopLossReached] = useState(false);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
+
+  // O usuário e o estado de carregamento agora são gerenciados por AuthContext e ProtectedRoute.
+  // Este componente apenas reage à presença de um usuário e configuração.
+  const { session } = useAuth();
+  const user = session?.user;
 
   // Refs para manter a versão mais atualizada dos estados e evitar "stale state"
   const bankrollRef = useRef(bankroll);
@@ -53,28 +56,6 @@ const Index = () => {
   useEffect(() => {
     operationsRef.current = operations;
   }, [operations]);
-
-  useEffect(() => {
-    // Set up auth state listener
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   useEffect(() => {
     if (user) {
@@ -234,7 +215,8 @@ const Index = () => {
   );
 
   useEffect(() => {
-    if (!config) return;
+    // 🔹 CORREÇÃO: Só verifica meta/stop se houver configuração E operações.
+    if (!config || operations.length === 0) return;
 
     // Calcula lucro atual
     let currentProfit = bankroll - config.initialBankroll;
@@ -287,7 +269,14 @@ const Index = () => {
 
     // Atualiza lucro normal se ainda não atingiu meta ou stop
     setTotalProfit(currentProfit);
-  }, [bankroll, config, goalReached, stopLossReached, saveDailyHistory]);
+  }, [
+    bankroll,
+    config,
+    goalReached,
+    stopLossReached,
+    saveDailyHistory,
+    operations.length,
+  ]);
 
   // Salva a sessão quando o usuário sai da página
   useBeforeUnload(useCallback(() => saveDailyHistory(), [saveDailyHistory]));
@@ -415,21 +404,6 @@ const Index = () => {
   const progressPercentage = config
     ? (totalProfit / ((config.initialBankroll * config.dailyGoal) / 100)) * 100
     : 0;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
 
   if (!config) {
     return (

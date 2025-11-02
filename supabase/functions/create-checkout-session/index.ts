@@ -1,44 +1,42 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
 import Stripe from "https://esm.sh/stripe@10.17.0";
-
-// Declare o tipo mínimo de 'Deno' para que o TypeScript reconheça Deno.env durante a checagem
-declare const Deno: {
-  env: {
-    get(key: string): string | undefined;
-  };
-};
-
-// Inicializa o Stripe com a chave secreta dos segredos da Supabase
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") as string, {
-  apiVersion: "2022-11-15",
-  httpClient: Stripe.createFetchHttpClient(),
-});
+import { corsHeaders } from "../_shared/cors.ts";
 
 // Função principal que será servida
 serve(async (req) => {
   // Habilita CORS para permitir que o frontend chame esta função
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers":
-          "authorization, x-client-info, apikey, content-type",
-      },
-    });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
+    // Validação robusta das variáveis de ambiente
+    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+    const siteUrl = Deno.env.get("SITE_URL");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    // Verificação individual para saber exatamente qual variável está faltando
+    if (!stripeSecretKey) throw new Error("Missing env var: STRIPE_SECRET_KEY");
+    if (!siteUrl) throw new Error("Missing env var: SITE_URL");
+    if (!supabaseUrl) throw new Error("Missing env var: SUPABASE_URL");
+    if (!supabaseAnonKey) throw new Error("Missing env var: SUPABASE_ANON_KEY");
+
+    // Inicializa o Stripe com a chave secreta
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2022-11-15",
+      httpClient: Stripe.createFetchHttpClient(),
+    });
+
     // 1. Extrai o token de autenticação do usuário e o ID do preço
     const { priceId } = await req.json();
     const authHeader = req.headers.get("Authorization")!;
 
     // 2. Cria um cliente Supabase para interagir com o banco de dados
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
     // 3. Obtém os dados do usuário autenticado
     const {
@@ -49,7 +47,7 @@ serve(async (req) => {
     }
 
     // 4. Busca o stripe_customer_id do usuário no nosso banco de dados
-    const { data: customer, error } = await supabaseClient
+    let { data: customer, error } = await supabaseClient
       .from("customers")
       .select("stripe_customer_id")
       .eq("id", user.id)
@@ -85,25 +83,19 @@ serve(async (req) => {
       subscription_data: {
         trial_from_plan: true, // Usa o período de teste definido no plano do Stripe
       },
-      success_url: `${Deno.env.get("SITE_URL")}/app`, // Redireciona para o app após sucesso
-      cancel_url: `${Deno.env.get("SITE_URL")}/`, // Redireciona para a landing page se cancelar
+      success_url: `${siteUrl}/app`, // Redireciona para o app após sucesso
+      cancel_url: `${siteUrl}/`, // Redireciona para a landing page se cancelar
     });
 
     // 7. Retorna o ID da sessão para o frontend
     return new Response(JSON.stringify({ sessionId: session.id }), {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": "application/json",
-      },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": "application/json",
-      },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

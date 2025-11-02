@@ -11,7 +11,9 @@ import Auth from "@/pages/Auth";
 import NotFound from "./pages/NotFound";
 import DailyHistory from "./pages/DailyHistory";
 import { supabase } from "./integrations/supabase/client"; // Ajuste o caminho se necessário
-import ProtectedRoute from "./components/ProtectedRoute";
+import ProtectedRoute from "./components/ProtectedRoute"; // 🔹
+import { AuthProvider } from "./contexts/AuthContext"; // 🔹
+import { SubscriptionProvider } from "./contexts/SubscriptionContext"; // 🔹
 
 const queryClient = new QueryClient();
 
@@ -22,9 +24,8 @@ const AppRoutes = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) {
-        navigate("/app"); // Redireciona para a calculadora após o login
-      }
+      // A página de Auth agora lida com o redirecionamento pós-login.
+      // Este listener agora só cuida do logout.
       if (event === "SIGNED_OUT") {
         navigate("/auth");
       }
@@ -73,7 +74,12 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AppRoutes />
+        {/* 🔹 Envolve as rotas com os providers para que os contextos fiquem disponíveis */}
+        <AuthProvider>
+          <SubscriptionProvider>
+            <AppRoutes />
+          </SubscriptionProvider>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
