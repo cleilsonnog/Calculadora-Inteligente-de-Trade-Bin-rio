@@ -215,8 +215,12 @@ const Index = () => {
   );
 
   useEffect(() => {
+<<<<<<< HEAD
     // 🔹 CORREÇÃO: Só verifica meta/stop se houver configuração E operações.
     if (!config || operations.length === 0) return;
+=======
+     if (!config || operations.length === 0) return;
+>>>>>>> c5a74bfac94adbf4976c9ccb1ccc23f763a6c25b
 
     // Calcula lucro atual
     let currentProfit = bankroll - config.initialBankroll;
