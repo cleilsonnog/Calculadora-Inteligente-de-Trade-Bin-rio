@@ -7,7 +7,14 @@ import { StatsDisplay } from "../components/StatsDisplay";
 import { HistoryTable } from "../components/HistoryTable";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
-import { TrendingUp, Settings, LogOut, History, Home } from "lucide-react";
+import {
+  TrendingUp,
+  Settings,
+  LogOut,
+  History,
+  Home,
+  Repeat,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface TradeConfig {
@@ -27,6 +34,8 @@ export interface TradeOperation {
   timestamp: Date;
 }
 
+type TradeMode = "real" | "training";
+
 const Index = () => {
   const navigate = useNavigate();
   const [config, setConfig] = useState<TradeConfig | null>(null);
@@ -37,6 +46,7 @@ const Index = () => {
   const [goalReached, setGoalReached] = useState(false);
   const [stopLossReached, setStopLossReached] = useState(false);
   const [isSessionSaved, setIsSessionSaved] = useState(false);
+  const [tradeMode, setTradeMode] = useState<TradeMode>("real");
 
   // O usuário e o estado de carregamento agora são gerenciados por AuthContext e ProtectedRoute.
   // Este componente apenas reage à presença de um usuário e configuração.
@@ -64,6 +74,11 @@ const Index = () => {
         const parsedConfig: TradeConfig = JSON.parse(savedConfig);
         setConfig(parsedConfig);
       }
+      // Carrega o último modo de trade usado
+      const savedMode = localStorage.getItem("tradeMode") as TradeMode;
+      if (savedMode) {
+        setTradeMode(savedMode);
+      }
     }
   }, [user]);
 
@@ -76,6 +91,11 @@ const Index = () => {
       setBankroll(config.initialBankroll);
     }
   }, [config]);
+
+  // Salva o modo de trade no localStorage sempre que ele mudar
+  useEffect(() => {
+    localStorage.setItem("tradeMode", tradeMode);
+  }, [tradeMode]);
 
   const saveDailyHistory = useCallback(
     async (statusOverride?: "Meta" | "Stop") => {
@@ -114,7 +134,7 @@ const Index = () => {
         try {
           // primeiro tenta usar head:true para obter count (mais eficiente)
           const countResp = await supabase
-            .from("historico_operacoes")
+            .from("historico_operacoes") // Sempre contamos do histórico real para nomear a sessão
             .select("id", { count: "exact", head: true })
             .eq("user_id", user.id)
             .eq("data", today);
@@ -155,6 +175,7 @@ const Index = () => {
           lucro_total: totalProfitRef.current,
           status,
           operacoes: JSON.stringify(safeOperations),
+          mode: tradeMode, // ⬅️ SALVANDO O MODO ATUAL
         };
 
         // 🔹 Insere nova sessão no banco
@@ -191,6 +212,7 @@ const Index = () => {
           result: op.result,
           profit_loss: op.profitLoss,
           bankroll_after: op.bankrollAfter,
+          // A coluna 'mode' não é necessária aqui, pois a operação está vinculada ao histórico
         }));
 
         // 🔹 Insere todas as operações individuais de uma vez
@@ -211,16 +233,12 @@ const Index = () => {
         toast.error("Erro inesperado ao salvar histórico. Ver console.");
       }
     },
-    [config, user, goalReached, stopLossReached] // Removido bankroll e totalProfit para evitar stale state
+    [config, user, goalReached, stopLossReached, tradeMode]
   );
 
   useEffect(() => {
-<<<<<<< HEAD
     // 🔹 CORREÇÃO: Só verifica meta/stop se houver configuração E operações.
     if (!config || operations.length === 0) return;
-=======
-     if (!config || operations.length === 0) return;
->>>>>>> c5a74bfac94adbf4976c9ccb1ccc23f763a6c25b
 
     // Calcula lucro atual
     let currentProfit = bankroll - config.initialBankroll;
@@ -405,6 +423,23 @@ const Index = () => {
     navigate("/?fromApp=true"); // Navega para a landing page com um sinalizador
   };
 
+  const handleToggleMode = () => {
+    // Salva a sessão atual antes de trocar de modo
+    if (operations.length > 0 && !isSessionSaved) {
+      saveDailyHistory();
+    }
+
+    const newMode = tradeMode === "real" ? "training" : "real";
+    setTradeMode(newMode);
+
+    // Reseta o estado da calculadora para o novo modo
+    handleReset(false); // `false` para não salvar novamente
+
+    toast.info(
+      `Modo alterado para: ${newMode === "real" ? "Conta Real" : "Treinamento"}`
+    );
+  };
+
   const progressPercentage = config
     ? (totalProfit / ((config.initialBankroll * config.dailyGoal) / 100)) * 100
     : 0;
@@ -438,11 +473,16 @@ const Index = () => {
         <div className="text-center mb-6 animate-fade-in">
           <div className="flex items-center justify-between mb-2">
             <div className="flex-1" />
-            <div className="inline-flex items-center gap-2">
-              <TrendingUp className="w-6 h-6 text-primary" />
-              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Calculadora de Trade Binário
-              </h1>
+            <div className="flex flex-col items-center">
+              <div className="inline-flex items-center gap-2">
+                <TrendingUp className="w-6 h-6 text-primary" />
+                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                  Calculadora de Trade Binário
+                </h1>
+              </div>
+              <p className="text-sm font-medium text-muted-foreground mt-1">
+                {tradeMode === "real" ? "Conta Real" : "Conta de Treinamento"}
+              </p>
             </div>
             <div className="flex-1 flex justify-end gap-2">
               <Button
@@ -470,6 +510,17 @@ const Index = () => {
                 title="Ir para a Página Inicial"
               >
                 <Home className="w-4 h-4" />
+              </Button>
+              {/* Botão para alternar modo */}
+              <Button
+                variant={tradeMode === "training" ? "default" : "outline"}
+                size="icon"
+                onClick={handleToggleMode}
+                title={`Mudar para modo ${
+                  tradeMode === "real" ? "Treinamento" : "Real"
+                }`}
+              >
+                <Repeat className="w-4 h-4" />
               </Button>
               <Button
                 variant="outline"

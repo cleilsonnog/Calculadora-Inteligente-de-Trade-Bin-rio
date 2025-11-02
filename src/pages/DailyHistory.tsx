@@ -20,6 +20,7 @@ import {
   ArrowLeft,
   Calendar as CalendarIcon,
   TrendingUp,
+  Repeat,
   Target,
   AlertCircle,
   Clock,
@@ -62,6 +63,9 @@ const DailyHistory = () => {
     null
   );
   const [date, setDate] = useState<DateRange | undefined>(undefined);
+  const [modeFilter, setModeFilter] = useState<"real" | "training" | "all">(
+    "real"
+  );
   const [individualOps, setIndividualOps] = useState<IndividualOperation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingOps, setLoadingOps] = useState(false);
@@ -71,7 +75,7 @@ const DailyHistory = () => {
   useEffect(() => {
     fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]); // ⬅️ Refetch when date range changes
+  }, [date, modeFilter]); // ⬅️ Refetch when date range or mode changes
 
   const fetchHistory = async () => {
     try {
@@ -99,6 +103,11 @@ const DailyHistory = () => {
           const toDate = date.to.toISOString().split("T")[0];
           query = query.gte("data", fromDate).lte("data", toDate);
         }
+      }
+
+      // 🔹 Adiciona o filtro de modo
+      if (modeFilter !== "all") {
+        query = query.eq("mode", modeFilter);
       }
 
       const { data, error } = await query.order("data", {
@@ -273,6 +282,28 @@ const DailyHistory = () => {
               </Button>
             )}
           </div>
+        </div>
+
+        {/* 🔹 FILTRO DE MODO */}
+        <div className="flex justify-center gap-2 mb-8">
+          <Button
+            variant={modeFilter === "real" ? "default" : "outline"}
+            onClick={() => setModeFilter("real")}
+          >
+            Conta Real
+          </Button>
+          <Button
+            variant={modeFilter === "training" ? "default" : "outline"}
+            onClick={() => setModeFilter("training")}
+          >
+            Treinamento
+          </Button>
+          <Button
+            variant={modeFilter === "all" ? "default" : "outline"}
+            onClick={() => setModeFilter("all")}
+          >
+            Ambas
+          </Button>
         </div>
 
         {records.length === 0 ? (
