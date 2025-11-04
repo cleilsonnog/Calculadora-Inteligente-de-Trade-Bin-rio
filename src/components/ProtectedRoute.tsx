@@ -21,8 +21,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
     // Sessão ok, mas sem assinatura
     if (session && !subscription) {
-      // Evita mostrar o toast repetidamente caso o usuário já esteja na tela inicial
-      if (window.location.pathname !== "/") {
+      // 🔹 CORREÇÃO: Evita o redirecionamento se o usuário já estiver em uma página
+      // que não seja a aplicação principal (como /settings ou /historico).
+      // Isso impede o loop de redirecionamento que causa a tela preta.
+      if (window.location.pathname === "/app") {
         toast.info("Sua sessão expirou ou você não tem um plano ativo.", {
           description: "Por favor, escolha um plano para continuar.",
           duration: 5000,

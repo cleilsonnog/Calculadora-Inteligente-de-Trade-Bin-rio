@@ -17,7 +17,21 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
+export interface ConfigValue {
+  value: number;
+  type: "percentage" | "currency";
+}
+
 export interface TradeConfig {
+  payout: number;
+  initialBankroll: number;
+  entry: ConfigValue;
+  dailyGoal: ConfigValue;
+  stopLoss: ConfigValue;
+}
+
+// 🔹 Interface para a estrutura de configuração antiga (para migração)
+export interface OldTradeConfig {
   payout: number;
   initialBankroll: number;
   entryPercentage: number;
@@ -72,7 +86,26 @@ const Index = () => {
       const savedConfig = localStorage.getItem("tradeConfig");
       if (savedConfig) {
         const parsedConfig: TradeConfig = JSON.parse(savedConfig);
-        setConfig(parsedConfig);
+
+        // 🔹 CORREÇÃO: Adiciona a lógica de migração para configurações antigas
+        // Isso garante que, ao carregar, o formato do objeto `config` seja sempre o novo.
+        if (
+          typeof (parsedConfig as OldTradeConfig).entryPercentage === "number"
+        ) {
+          const oldConfig = parsedConfig as OldTradeConfig;
+          const migratedConfig: TradeConfig = {
+            payout: oldConfig.payout,
+            initialBankroll: oldConfig.initialBankroll,
+            entry: { value: oldConfig.entryPercentage, type: "percentage" },
+            dailyGoal: { value: oldConfig.dailyGoal, type: "percentage" },
+            stopLoss: { value: oldConfig.stopLoss, type: "percentage" },
+          };
+          setConfig(migratedConfig);
+          // Salva a configuração migrada de volta para evitar futuras migrações
+          localStorage.setItem("tradeConfig", JSON.stringify(migratedConfig));
+        } else {
+          setConfig(parsedConfig);
+        }
       }
       // Carrega o último modo de trade usado
       const savedMode = localStorage.getItem("tradeMode") as TradeMode;
@@ -85,8 +118,14 @@ const Index = () => {
   useEffect(() => {
     if (config) {
       localStorage.setItem("tradeConfig", JSON.stringify(config));
-      const initialEntry =
-        (config.initialBankroll * config.entryPercentage) / 100;
+
+      let initialEntry = 0;
+      if (config.entry.type === "percentage") {
+        initialEntry = (config.initialBankroll * config.entry.value) / 100;
+      } else {
+        initialEntry = config.entry.value;
+      }
+
       setCurrentEntry(initialEntry);
       setBankroll(config.initialBankroll);
     }
@@ -245,8 +284,14 @@ const Index = () => {
     let adjustedBankroll = bankroll;
 
     // Limite de ganho e perda
-    const goalValue = (config.initialBankroll * config.dailyGoal) / 100;
-    const lossLimit = (config.initialBankroll * config.stopLoss) / 100;
+    const goalValue =
+      config.dailyGoal.type === "percentage"
+        ? (config.initialBankroll * config.dailyGoal.value) / 100
+        : config.dailyGoal.value;
+    const lossLimit =
+      config.stopLoss.type === "percentage"
+        ? (config.initialBankroll * config.stopLoss.value) / 100
+        : config.stopLoss.value;
 
     let status: "Meta" | "Stop" | "Em aberto" = "Em aberto";
 
@@ -308,8 +353,13 @@ const Index = () => {
 
     const profit = currentEntry * (config.payout / 100);
     const newBankroll = bankroll + profit;
-    const initialEntry =
-      (config.initialBankroll * config.entryPercentage) / 100;
+
+    let initialEntry = 0;
+    if (config.entry.type === "percentage") {
+      initialEntry = (config.initialBankroll * config.entry.value) / 100;
+    } else {
+      initialEntry = config.entry.value;
+    }
 
     setOperations((prevOps) => [
       {
@@ -338,8 +388,12 @@ const Index = () => {
     const newBankroll = bankroll - loss;
 
     // Cálculo de Martingale: próxima entrada recupera a perda + gera lucro
-    const desiredProfit =
-      (config.initialBankroll * config.entryPercentage) / 100;
+    let desiredProfit = 0;
+    if (config.entry.type === "percentage") {
+      desiredProfit = (config.initialBankroll * config.entry.value) / 100;
+    } else {
+      desiredProfit = config.entry.value;
+    }
     const nextEntry = (currentEntry + desiredProfit) / (config.payout / 100);
 
     setOperations((prevOps) => [
@@ -369,8 +423,12 @@ const Index = () => {
     const newBankroll = bankroll - loss;
 
     // Lógica conservadora: retorna para a entrada inicial, igual ao 'handleWin'
-    const initialEntry =
-      (config.initialBankroll * config.entryPercentage) / 100;
+    let initialEntry = 0;
+    if (config.entry.type === "percentage") {
+      initialEntry = (config.initialBankroll * config.entry.value) / 100;
+    } else {
+      initialEntry = config.entry.value;
+    }
 
     setOperations((prevOps) => [
       {
@@ -392,13 +450,22 @@ const Index = () => {
     });
   };
 
-  const handleReset = () => {
+  const handleReset = (saveSession = true) => {
     if (!config) return;
 
-    saveDailyHistory(); // Salva a sessão atual antes de resetar
+    if (saveSession) {
+      saveDailyHistory(); // Salva a sessão atual antes de resetar
+    }
+
+    let initialEntry = 0;
+    if (config.entry.type === "percentage") {
+      initialEntry = (config.initialBankroll * config.entry.value) / 100;
+    } else {
+      initialEntry = config.entry.value;
+    }
 
     setBankroll(config.initialBankroll);
-    setCurrentEntry((config.initialBankroll * config.entryPercentage) / 100);
+    setCurrentEntry(initialEntry);
     setOperations([]);
     setTotalProfit(0);
     setGoalReached(false);
@@ -440,9 +507,16 @@ const Index = () => {
     );
   };
 
-  const progressPercentage = config
-    ? (totalProfit / ((config.initialBankroll * config.dailyGoal) / 100)) * 100
-    : 0;
+  // 🔹 CORREÇÃO: Garante que `goalValue` só seja calculado se `config` existir, evitando NaN.
+  const goalValue =
+    config && config.dailyGoal
+      ? config.dailyGoal.type === "percentage"
+        ? (config.initialBankroll * config.dailyGoal.value) / 100
+        : config.dailyGoal.value
+      : 0;
+
+  const progressPercentage =
+    goalValue > 0 ? (totalProfit / goalValue) * 100 : 0;
 
   if (!config) {
     return (
@@ -480,7 +554,7 @@ const Index = () => {
                   Calculadora de Trade Binário
                 </h1>
               </div>
-              <p className="text-sm font-medium text-muted-foreground mt-1">
+              <p className="text-lg font-medium text-muted-foreground mt-1">
                 {tradeMode === "real" ? "Conta Real" : "Conta de Treinamento"}
               </p>
             </div>
@@ -538,7 +612,7 @@ const Index = () => {
           bankroll={bankroll}
           totalProfit={totalProfit}
           progressPercentage={progressPercentage}
-          config={config}
+          goalValue={goalValue}
           goalReached={goalReached}
           stopLossReached={stopLossReached}
         />

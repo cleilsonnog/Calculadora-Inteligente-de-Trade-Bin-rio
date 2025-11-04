@@ -7,7 +7,7 @@ interface StatsDisplayProps {
   bankroll: number;
   totalProfit: number;
   progressPercentage: number;
-  config: TradeConfig;
+  goalValue: number;
   goalReached: boolean;
   stopLossReached: boolean;
 }
@@ -16,11 +16,10 @@ export const StatsDisplay = ({
   bankroll,
   totalProfit,
   progressPercentage,
-  config,
+  goalValue,
   goalReached,
   stopLossReached,
 }: StatsDisplayProps) => {
-  const goalValue = (config.initialBankroll * config.dailyGoal) / 100;
   const isProfitable = totalProfit >= 0;
 
   return (
@@ -92,10 +91,7 @@ export const StatsDisplay = ({
           <CardTitle className="text-sm font-medium">Progresso</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Progress
-            value={Math.min(progressPercentage, 100)}
-            className="h-3"
-          />
+          <Progress value={Math.min(progressPercentage, 100)} className="h-3" />
           <p className="text-xl font-bold font-mono-numbers">
             {progressPercentage.toFixed(1)}%
           </p>

@@ -13,41 +13,71 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Settings as SettingsIcon, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
-import { TradeConfig } from "./Index";
+import { TradeConfig, ConfigValue, OldTradeConfig } from "./Index";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const Settings = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [payout, setPayout] = useState("80");
   const [initialBankroll, setInitialBankroll] = useState("1000");
-  const [entryPercentage, setEntryPercentage] = useState("2");
-  const [dailyGoal, setDailyGoal] = useState("10");
-  const [stopLoss, setStopLoss] = useState("5");
+  const [entry, setEntry] = useState<ConfigValue>({
+    value: 2,
+    type: "percentage",
+  });
+  const [dailyGoal, setDailyGoal] = useState<ConfigValue>({
+    value: 10,
+    type: "percentage",
+  });
+  const [stopLoss, setStopLoss] = useState<ConfigValue>({
+    value: 5,
+    type: "percentage",
+  });
 
   useEffect(() => {
-    // Check authentication
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const checkAuthAndLoadConfig = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session) {
         navigate("/auth");
-      } else {
-        setLoading(false);
+        return;
       }
-    });
-  }, [navigate]);
 
-  useEffect(() => {
-    if (!loading) {
+      // Se a sessão existe, carregamos a configuração
       const savedConfig = localStorage.getItem("tradeConfig");
       if (savedConfig) {
         const config: TradeConfig = JSON.parse(savedConfig);
-        setPayout(config.payout.toString());
-        setInitialBankroll(config.initialBankroll.toString());
-        setEntryPercentage(config.entryPercentage.toString());
-        setDailyGoal(config.dailyGoal.toString());
-        setStopLoss(config.stopLoss.toString());
+        // 🔹 Adiciona verificações para garantir que os valores existem antes de usá-los
+        setPayout((config.payout || 80).toString());
+        setInitialBankroll((config.initialBankroll || 1000).toString());
+
+        // Migração de configurações antigas para o novo formato
+        if (typeof (config as OldTradeConfig).entryPercentage === "number") {
+          const oldConfig = config as OldTradeConfig;
+          setEntry({
+            value: oldConfig.entryPercentage || 2,
+            type: "percentage",
+          });
+          setDailyGoal({
+            value: oldConfig.dailyGoal || 10,
+            type: "percentage",
+          });
+          setStopLoss({ value: oldConfig.stopLoss || 5, type: "percentage" });
+        } else {
+          // 🔹 Garante que os objetos de configuração complexos e seus valores internos existam
+          setEntry(config.entry || { value: 2, type: "percentage" });
+          setDailyGoal(config.dailyGoal || { value: 10, type: "percentage" });
+          setStopLoss(config.stopLoss || { value: 5, type: "percentage" });
+        }
       }
-    }
-  }, [loading]);
+      // Apenas paramos o loading depois de tudo verificado e carregado
+      setLoading(false);
+    };
+
+    checkAuthAndLoadConfig();
+  }, [navigate]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,9 +85,9 @@ const Settings = () => {
     const config: TradeConfig = {
       payout: parseFloat(payout),
       initialBankroll: parseFloat(initialBankroll),
-      entryPercentage: parseFloat(entryPercentage),
-      dailyGoal: parseFloat(dailyGoal),
-      stopLoss: parseFloat(stopLoss),
+      entry: { ...entry, value: parseFloat(String(entry.value)) },
+      dailyGoal: { ...dailyGoal, value: parseFloat(String(dailyGoal.value)) },
+      stopLoss: { ...stopLoss, value: parseFloat(String(stopLoss.value)) },
     };
 
     localStorage.setItem("tradeConfig", JSON.stringify(config));
@@ -128,42 +158,114 @@ const Settings = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="entry">Entrada por Operação (%)</Label>
-                  <Input
-                    id="entry"
-                    type="number"
-                    step="0.1"
-                    value={entryPercentage}
-                    onChange={(e) => setEntryPercentage(e.target.value)}
-                    required
-                    className="font-mono-numbers"
-                  />
+                  <Label htmlFor="entry">Entrada por Operação</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="entry"
+                      type="number"
+                      step="0.01"
+                      value={entry.value}
+                      onChange={(e) =>
+                        setEntry({
+                          ...entry,
+                          value: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      required
+                      className="font-mono-numbers"
+                    />
+                    <ToggleGroup
+                      type="single"
+                      value={entry.type}
+                      onValueChange={(value: ConfigValue["type"]) => {
+                        if (value) setEntry({ ...entry, type: value });
+                      }}
+                    >
+                      <ToggleGroupItem
+                        value="percentage"
+                        aria-label="Porcentagem"
+                      >
+                        %
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="currency" aria-label="Reais">
+                        R$
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="goal">Meta Diária (%)</Label>
-                  <Input
-                    id="goal"
-                    type="number"
-                    step="0.1"
-                    value={dailyGoal}
-                    onChange={(e) => setDailyGoal(e.target.value)}
-                    required
-                    className="font-mono-numbers"
-                  />
+                  <Label htmlFor="goal">Meta Diária</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="goal"
+                      type="number"
+                      step="0.01"
+                      value={dailyGoal.value}
+                      onChange={(e) =>
+                        setDailyGoal({
+                          ...dailyGoal,
+                          value: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      required
+                      className="font-mono-numbers"
+                    />
+                    <ToggleGroup
+                      type="single"
+                      value={dailyGoal.type}
+                      onValueChange={(value: ConfigValue["type"]) => {
+                        if (value) setDailyGoal({ ...dailyGoal, type: value });
+                      }}
+                    >
+                      <ToggleGroupItem
+                        value="percentage"
+                        aria-label="Porcentagem"
+                      >
+                        %
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="currency" aria-label="Reais">
+                        R$
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="stopLoss">Stop Loss (%)</Label>
-                  <Input
-                    id="stopLoss"
-                    type="number"
-                    step="0.1"
-                    value={stopLoss}
-                    onChange={(e) => setStopLoss(e.target.value)}
-                    required
-                    className="font-mono-numbers"
-                  />
+                <div className="space-y-2">
+                  <Label htmlFor="stopLoss">Stop Loss</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="stopLoss"
+                      type="number"
+                      step="0.01"
+                      value={stopLoss.value}
+                      onChange={(e) =>
+                        setStopLoss({
+                          ...stopLoss,
+                          value: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      required
+                      className="font-mono-numbers"
+                    />
+                    <ToggleGroup
+                      type="single"
+                      value={stopLoss.type}
+                      onValueChange={(value: ConfigValue["type"]) => {
+                        if (value) setStopLoss({ ...stopLoss, type: value });
+                      }}
+                    >
+                      <ToggleGroupItem
+                        value="percentage"
+                        aria-label="Porcentagem"
+                      >
+                        %
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="currency" aria-label="Reais">
+                        R$
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
                 </div>
               </div>
 
