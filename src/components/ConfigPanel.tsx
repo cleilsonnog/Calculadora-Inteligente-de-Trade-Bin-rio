@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -9,7 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Settings } from "lucide-react";
+import { Settings, Loader2 } from "lucide-react";
 import { TradeConfig, ConfigValue } from "@/pages/Index";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
@@ -18,6 +20,7 @@ interface ConfigPanelProps {
 }
 
 export const ConfigPanel = ({ onConfigSubmit }: ConfigPanelProps) => {
+  const [loading, setLoading] = useState(false);
   const [payout, setPayout] = useState("80");
   const [initialBankroll, setInitialBankroll] = useState("1000");
   const [entry, setEntry] = useState<ConfigValue>({
@@ -33,16 +36,50 @@ export const ConfigPanel = ({ onConfigSubmit }: ConfigPanelProps) => {
     type: "percentage",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
 
-    onConfigSubmit({
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Usuário não encontrado. Faça login novamente.");
+      setLoading(false);
+      return;
+    }
+
+    const newConfig: TradeConfig = {
       payout: parseFloat(payout),
       initialBankroll: parseFloat(initialBankroll),
       entry: { ...entry, value: parseFloat(String(entry.value)) },
       dailyGoal: { ...dailyGoal, value: parseFloat(String(dailyGoal.value)) },
       stopLoss: { ...stopLoss, value: parseFloat(String(stopLoss.value)) },
-    });
+    };
+
+    const configToSave = {
+      user_id: user.id,
+      payout: newConfig.payout,
+      initial_bankroll: newConfig.initialBankroll,
+      entry: newConfig.entry,
+      daily_goal: newConfig.dailyGoal,
+      stop_loss: newConfig.stopLoss,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from("user_configs")
+      .upsert(configToSave, { onConflict: "user_id" });
+
+    setLoading(false);
+
+    if (error) {
+      console.error("Erro ao salvar configuração inicial:", error);
+      toast.error("Falha ao salvar a configuração inicial.");
+    } else {
+      toast.success("🚀 Configuração salva! Vamos começar.");
+      onConfigSubmit(newConfig); // Atualiza o estado global para mostrar a calculadora
+    }
   };
 
   return (
@@ -188,11 +225,12 @@ export const ConfigPanel = ({ onConfigSubmit }: ConfigPanelProps) => {
             </div>
           </div>
 
-          <Button
-            type="submit"
-            className="w-full gradient-primary glow-primary"
-          >
-            Iniciar Operações
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              "Iniciar Operações"
+            )}
           </Button>
         </form>
       </CardContent>

@@ -35,8 +35,9 @@ const Auth = () => {
         });
         if (error) throw error;
         toast.success("Login realizado com sucesso!");
-        // Redireciona para a aplicação, onde a ProtectedRoute fará a verificação.
-        navigate("/app");
+        // Redireciona para a página principal. A própria Landing Page ou a ProtectedRoute
+        // decidirá para onde o usuário deve ir (planos ou app).
+        navigate("/");
       } else {
         // Handle Sign Up
         const { error } = await supabase.auth.signUp({

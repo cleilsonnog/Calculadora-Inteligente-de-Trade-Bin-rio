@@ -10,37 +10,50 @@ import {
   Loader2,
 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext"; // 1. Importar o useAuth
+import { useSubscription } from "@/contexts/SubscriptionContext"; // 2. Importar o useSubscription
+import { SupabaseClient, supabase } from "@/integrations/supabase/client";
 import { getStripe } from "@/integrations/stripe/client";
 import { Stripe } from "@stripe/stripe-js";
 import { toast } from "sonner";
 
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  prices: Price[];
+}
+
+interface Price {
+  id: string;
+  unit_amount: number;
+  interval: "month" | "year";
+}
+
 const Landing = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
 
-  // Efeito para redirecionar usuários logados da landing page para o app
+  // 3. Usar os contextos para obter a sessão e a assinatura
+  const { session } = useAuth();
+  const { subscription } = useSubscription();
+
   useEffect(() => {
-    const checkUserAndRedirect = async () => {
-      // Verifica se o usuário veio explicitamente do app para a landing page
-      const urlParams = new URLSearchParams(window.location.search);
-      const cameFromAppExplicitly = urlParams.get("fromApp") === "true";
+    // Verifica se o usuário veio do app para a landing page (para não redirecionar de volta)
+    const cameFromApp =
+      new URLSearchParams(window.location.search).get("fromApp") === "true";
+    if (cameFromApp) {
+      return;
+    }
 
-      // Se o usuário veio explicitamente do app, não redireciona de volta
-      if (cameFromAppExplicitly) {
-        return;
-      }
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        // Redireciona apenas se o usuário logado acessou a landing page diretamente (sem o sinalizador)
-        navigate("/app");
-      }
-    };
-    checkUserAndRedirect();
-  }, [navigate]);
+    // 4. Lógica de redirecionamento corrigida
+    // Redireciona para /app APENAS se o usuário estiver logado E tiver uma assinatura ativa ou for admin.
+    const isAdmin = session?.user?.app_metadata?.role === "admin";
+    if (session && (subscription || isAdmin)) {
+      navigate("/app");
+    }
+  }, [session, subscription, navigate]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -52,6 +65,29 @@ const Landing = () => {
     };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Efeito para carregar os produtos e preços do Supabase
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const { data: productsData, error } = await supabase
+        .from("products")
+        .select("*, prices(*)")
+        .eq("active", true)
+        .eq("prices.active", true)
+        .order("name");
+
+      if (error) {
+        console.error("Erro ao buscar produtos:", error);
+        toast.error("Não foi possível carregar os planos.");
+        return;
+      }
+
+      if (productsData) {
+        setProducts(productsData as Product[]);
+      }
+    };
+    fetchProducts();
   }, []);
 
   const features = [
@@ -212,83 +248,60 @@ const Landing = () => {
             Comece com 7 dias gratuitos. Cancele a qualquer momento.
           </p>
 
-          <div className="flex flex-col md:flex-row justify-center items-center gap-8">
-            {/* Plano Mensal */}
-            <Card className="p-8 border-primary/50 shadow-lg w-full max-w-sm text-center transform hover:scale-105 transition-transform duration-300">
-              <h3 className="text-2xl font-bold mb-2">Plano Mensal</h3>
-              <p className="text-4xl font-extrabold mb-4">
-                R$ 7,99<span className="text-lg font-medium">/mês</span>
-              </p>
-              <ul className="space-y-3 text-left mb-8">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                  Acesso a todas as funcionalidades.
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                  Histórico ilimitado de operações.
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                  Suporte prioritário.
-                </li>
-              </ul>
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={() => handleCheckout("price_1SMaAS3sCFRPzKU4ihar6glO")} // ⚠️ SUBSTITUA PELO SEU PRICE ID MENSAL
-                disabled={loading === "price_1SMaAS3sCFRPzKU4ihar6glO"}
-              >
-                {loading === "price_1SMaAS3sCFRPzKU4ihar6glO" ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Aguarde...
-                  </>
-                ) : (
-                  "Começar Teste Gratuito"
-                )}
-              </Button>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 justify-center items-center gap-8 max-w-4xl mx-auto">
+            {products.length > 0 ? (
+              products
+                .flatMap((product) =>
+                  product.prices.map((price) => ({ product, price }))
+                )
+                .map(({ product, price }) => (
+                  <Card
+                    key={price.id}
+                    className="p-8 border-primary/50 shadow-lg w-full max-w-sm text-center transform hover:scale-105 transition-transform duration-300 mx-auto"
+                  >
+                    <h3 className="text-2xl font-bold mb-2">{product.name}</h3>
+                    <p className="text-muted-foreground mb-6 h-12">
+                      {price.interval === "month"
+                        ? "Acesso mensal completo"
+                        : "Acesso anual com desconto"}
+                    </p>
 
-            {/* Plano Anual */}
-            <Card className="p-8 border-2 border-primary shadow-xl w-full max-w-sm text-center relative">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-semibold">
-                Mais Popular
+                    <div className="mb-6">
+                      <p className="text-4xl font-extrabold">
+                        R$ {(price.unit_amount / 100).toFixed(2)}
+                        <span className="text-lg font-medium">
+                          /{price.interval === "month" ? "mês" : "ano"}
+                        </span>
+                      </p>
+                      <Button
+                        size="lg"
+                        className="w-full mt-4"
+                        variant={
+                          price.interval === "year" ? "outline" : "default"
+                        }
+                        onClick={() => handleCheckout(price.id)}
+                        disabled={loading === price.id}
+                      >
+                        {loading === price.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : price.interval === "month" ? (
+                          "Começar Teste Gratuito"
+                        ) : (
+                          "Economize com o Anual"
+                        )}
+                      </Button>
+                    </div>
+                  </Card>
+                ))
+            ) : (
+              <div className="col-span-1 md:col-span-2 text-center text-muted-foreground">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin mb-4" />
+                Carregando planos...
               </div>
-              <h3 className="text-2xl font-bold mb-2">Plano Anual</h3>
-              <p className="text-4xl font-extrabold mb-4">
-                R$ 50,99<span className="text-lg font-medium">/ano</span>
-              </p>
-              <ul className="space-y-3 text-left mb-8">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                  Tudo do plano mensal.
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                  Economize 40% em relação ao plano mensal.
-                </li>
-              </ul>
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={() => handleCheckout("price_1SMaAS3sCFRPzKU4EFe7YbOT")} // ⚠️ SUBSTITUA PELO SEU PRICE ID ANUAL
-                disabled={loading === "price_1SMaAS3sCFRPzKU4EFe7YbOT"}
-              >
-                {loading === "price_1SMaAS3sCFRPzKU4EFe7YbOT" ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Aguarde...
-                  </>
-                ) : (
-                  "Começar Teste Gratuito"
-                )}
-              </Button>
-            </Card>
+            )}
           </div>
         </section>
 
-        {/* Benefícios */}
         <section className="container mx-auto px-4 py-16 md:py-24 bg-primary/5 rounded-3xl my-16 text-center">
           <div className="max-w-4xl mx-auto space-y-6 animate-fade-slide-up">
             <h2 className="text-3xl md:text-4xl font-bold">

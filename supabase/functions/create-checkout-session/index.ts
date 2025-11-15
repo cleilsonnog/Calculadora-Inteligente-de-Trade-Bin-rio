@@ -1,6 +1,6 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
-import Stripe from "https://esm.sh/stripe@10.17.0";
+import { serve } from "std/http";
+import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
 import { corsHeaders } from "../_shared/cors.ts";
 
 // Função principal que será servida
@@ -25,7 +25,7 @@ serve(async (req) => {
 
     // Inicializa o Stripe com a chave secreta
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2022-11-15",
+      apiVersion: "2024-06-20", // ⬅️ ATUALIZADO: Versão da API mais recente e estável
       httpClient: Stripe.createFetchHttpClient(),
     });
 
@@ -76,10 +76,11 @@ serve(async (req) => {
 
     // 6. Cria a sessão de checkout no Stripe
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["pix"], // Habilita PIX
+      payment_method_types: ["card", "pix"], // ⬅️ MELHORIA: Habilita Cartão e PIX
       customer: customer.stripe_customer_id,
       line_items: [{ price: priceId, quantity: 1 }],
       mode: "subscription", // Define que é uma assinatura
+      client_reference_id: user.id, // ⬅️ ADICIONADO: Vincula a sessão ao ID do usuário do Supabase
       subscription_data: {
         trial_from_plan: true, // Usa o período de teste definido no plano do Stripe
       },

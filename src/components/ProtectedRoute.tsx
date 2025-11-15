@@ -19,20 +19,18 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    // Sessão ok, mas sem assinatura
-    if (session && !subscription) {
-      // 🔹 CORREÇÃO: Evita o redirecionamento se o usuário já estiver em uma página
-      // que não seja a aplicação principal (como /settings ou /historico).
-      // Isso impede o loop de redirecionamento que causa a tela preta.
-      if (window.location.pathname === "/app") {
-        toast.info("Sua sessão expirou ou você não tem um plano ativo.", {
-          description: "Por favor, escolha um plano para continuar.",
-          duration: 5000,
-        });
-        // Adiciona um parâmetro para evitar o loop de redirecionamento na Landing page.
-        // O `replace: true` impede que o histórico do navegador fique poluído com os redirecionamentos.
-        navigate("/?fromApp=true", { replace: true });
-      }
+    // Verifica se o usuário tem a role de 'admin'
+    const isAdmin = session.user?.app_metadata?.role === "admin";
+
+    // Se o usuário tem sessão, mas não tem assinatura e não é admin,
+    // ele deve ser enviado para a página de planos.
+    if (session && !subscription && !isAdmin) {
+      toast.info("Você não tem um plano ativo.", {
+        description: "Por favor, escolha um plano para continuar.",
+        duration: 5000,
+      });
+      // Redireciona para a página de planos, impedindo o acesso ao app.
+      navigate("/", { replace: true });
     }
   }, [session, subscription, authLoading, subscriptionLoading, navigate]);
 
@@ -45,11 +43,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
+  // Verifica se o usuário é admin
+  const isAdmin = session?.user?.app_metadata?.role === "admin";
+
   // Apenas renderiza o conteúdo protegido se o carregamento terminou,
-  // o usuário está logado E tem uma assinatura.
+  // o usuário está logado E (tem uma assinatura OU é admin).
   // Em todos os outros casos, o useEffect já cuidou do redirecionamento,
   // e retornar null é seguro e evita renderizações indesejadas.
-  return session && subscription ? <>{children}</> : null;
+  return session && (subscription || isAdmin) ? <>{children}</> : null;
 };
 
 export default ProtectedRoute;

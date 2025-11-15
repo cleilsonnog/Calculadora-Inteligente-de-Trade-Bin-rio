@@ -36,7 +36,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
         .eq("user_id", session.user.id)
         .in("status", ["trialing", "active"])
         .single()
-        .then(({ data, error }) => {
+        .then(({ data }) => {
           // Se encontrar uma assinatura, define. Se não, define como null.
           setSubscription(data ? (data as Subscription) : null);
           setLoading(false);

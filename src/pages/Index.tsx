@@ -16,6 +16,7 @@ import {
   Repeat,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useConfig } from "@/contexts/ConfigContext";
 
 export interface ConfigValue {
   value: number;
@@ -52,7 +53,6 @@ type TradeMode = "real" | "training";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [config, setConfig] = useState<TradeConfig | null>(null);
   const [bankroll, setBankroll] = useState(0);
   const [currentEntry, setCurrentEntry] = useState(0);
   const [operations, setOperations] = useState<TradeOperation[]>([]);
@@ -65,7 +65,12 @@ const Index = () => {
   // O usuário e o estado de carregamento agora são gerenciados por AuthContext e ProtectedRoute.
   // Este componente apenas reage à presença de um usuário e configuração.
   const { session } = useAuth();
-  const user = session?.user;
+  const {
+    config,
+    loading: configLoading,
+    setConfig: setGlobalConfig,
+  } = useConfig(); // Usando o contexto
+  const user = session?.user; // Mantém a referência ao usuário
 
   // Refs para manter a versão mais atualizada dos estados e evitar "stale state"
   const bankrollRef = useRef(bankroll);
@@ -82,43 +87,15 @@ const Index = () => {
   }, [operations]);
 
   useEffect(() => {
-    if (user) {
-      const savedConfig = localStorage.getItem("tradeConfig");
-      if (savedConfig) {
-        const parsedConfig: TradeConfig = JSON.parse(savedConfig);
-
-        // 🔹 CORREÇÃO: Adiciona a lógica de migração para configurações antigas
-        // Isso garante que, ao carregar, o formato do objeto `config` seja sempre o novo.
-        if (
-          typeof (parsedConfig as OldTradeConfig).entryPercentage === "number"
-        ) {
-          const oldConfig = parsedConfig as OldTradeConfig;
-          const migratedConfig: TradeConfig = {
-            payout: oldConfig.payout,
-            initialBankroll: oldConfig.initialBankroll,
-            entry: { value: oldConfig.entryPercentage, type: "percentage" },
-            dailyGoal: { value: oldConfig.dailyGoal, type: "percentage" },
-            stopLoss: { value: oldConfig.stopLoss, type: "percentage" },
-          };
-          setConfig(migratedConfig);
-          // Salva a configuração migrada de volta para evitar futuras migrações
-          localStorage.setItem("tradeConfig", JSON.stringify(migratedConfig));
-        } else {
-          setConfig(parsedConfig);
-        }
-      }
-      // Carrega o último modo de trade usado
-      const savedMode = localStorage.getItem("tradeMode") as TradeMode;
-      if (savedMode) {
-        setTradeMode(savedMode);
-      }
+    // Carrega o modo de trade do localStorage quando o componente monta
+    const savedMode = localStorage.getItem("tradeMode") as TradeMode;
+    if (savedMode) {
+      setTradeMode(savedMode);
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     if (config) {
-      localStorage.setItem("tradeConfig", JSON.stringify(config));
-
       let initialEntry = 0;
       if (config.entry.type === "percentage") {
         initialEntry = (config.initialBankroll * config.entry.value) / 100;
@@ -518,6 +495,19 @@ const Index = () => {
   const progressPercentage =
     goalValue > 0 ? (totalProfit / goalValue) * 100 : 0;
 
+  if (configLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">
+            Carregando calculadora...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!config) {
     return (
       <div className="min-h-screen bg-background p-4 md:p-8">
@@ -535,7 +525,7 @@ const Index = () => {
             </p>
           </div>
 
-          <ConfigPanel onConfigSubmit={setConfig} />
+          <ConfigPanel onConfigSubmit={setGlobalConfig} />
         </div>
       </div>
     );

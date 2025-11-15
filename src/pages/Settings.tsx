@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Settings as SettingsIcon, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { TradeConfig, ConfigValue, OldTradeConfig } from "./Index";
+import { useConfig } from "@/contexts/ConfigContext";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const Settings = () => {
@@ -34,65 +35,53 @@ const Settings = () => {
     type: "percentage",
   });
 
+  const { config, loading: configLoading, refreshConfig } = useConfig();
+
   useEffect(() => {
-    const checkAuthAndLoadConfig = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        navigate("/auth");
-        return;
+    // Quando o contexto carregar a configuração, preenchemos os campos do formulário.
+    if (!configLoading) {
+      if (config) {
+        setPayout(config.payout.toString());
+        setInitialBankroll(config.initialBankroll.toString());
+        setEntry(config.entry);
+        setDailyGoal(config.dailyGoal);
+        setStopLoss(config.stopLoss);
       }
+      setLoading(false); // Finaliza o loading da página
+    }
+  }, [config, configLoading]);
 
-      // Se a sessão existe, carregamos a configuração
-      const savedConfig = localStorage.getItem("tradeConfig");
-      if (savedConfig) {
-        const config: TradeConfig = JSON.parse(savedConfig);
-        // 🔹 Adiciona verificações para garantir que os valores existem antes de usá-los
-        setPayout((config.payout || 80).toString());
-        setInitialBankroll((config.initialBankroll || 1000).toString());
-
-        // Migração de configurações antigas para o novo formato
-        if (typeof (config as OldTradeConfig).entryPercentage === "number") {
-          const oldConfig = config as OldTradeConfig;
-          setEntry({
-            value: oldConfig.entryPercentage || 2,
-            type: "percentage",
-          });
-          setDailyGoal({
-            value: oldConfig.dailyGoal || 10,
-            type: "percentage",
-          });
-          setStopLoss({ value: oldConfig.stopLoss || 5, type: "percentage" });
-        } else {
-          // 🔹 Garante que os objetos de configuração complexos e seus valores internos existam
-          setEntry(config.entry || { value: 2, type: "percentage" });
-          setDailyGoal(config.dailyGoal || { value: 10, type: "percentage" });
-          setStopLoss(config.stopLoss || { value: 5, type: "percentage" });
-        }
-      }
-      // Apenas paramos o loading depois de tudo verificado e carregado
-      setLoading(false);
-    };
-
-    checkAuthAndLoadConfig();
-  }, [navigate]);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const config: TradeConfig = {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const configToSave = {
+      user_id: user.id, // CORREÇÃO: Usar a coluna correta 'user_id'
       payout: parseFloat(payout),
-      initialBankroll: parseFloat(initialBankroll),
+      initial_bankroll: parseFloat(initialBankroll),
       entry: { ...entry, value: parseFloat(String(entry.value)) },
-      dailyGoal: { ...dailyGoal, value: parseFloat(String(dailyGoal.value)) },
-      stopLoss: { ...stopLoss, value: parseFloat(String(stopLoss.value)) },
+      daily_goal: { ...dailyGoal, value: parseFloat(String(dailyGoal.value)) },
+      stop_loss: { ...stopLoss, value: parseFloat(String(stopLoss.value)) },
+      updated_at: new Date().toISOString(),
     };
 
-    localStorage.setItem("tradeConfig", JSON.stringify(config));
-    toast.success("⚙️ Configurações salvas com sucesso!");
-    navigate("/");
+    // Usa 'upsert' para inserir ou atualizar o registro
+    const { error } = await supabase
+      .from("user_configs")
+      .upsert(configToSave, { onConflict: "user_id" }); // CORREÇÃO: Especifica a coluna de conflito
+
+    if (error) {
+      console.error("Erro ao salvar configurações:", error);
+      toast.error("Falha ao salvar as configurações.");
+    } else {
+      toast.success("⚙️ Configurações salvas com sucesso!");
+      refreshConfig(); // Atualiza o contexto com os novos dados
+      navigate("/app"); // Navega para a calculadora
+    }
   };
 
   if (loading) {
@@ -100,7 +89,7 @@ const Settings = () => {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
+          <p className="mt-4 text-muted-foreground">Carregando...</p>
         </div>
       </div>
     );
@@ -110,8 +99,8 @@ const Settings = () => {
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
         <Button
-          variant="ghost"
-          onClick={() => navigate("/")}
+          variant="outline"
+          onClick={() => navigate("/app")}
           className="mb-6 animate-fade-in" // Redireciona para a calculadora
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -269,10 +258,7 @@ const Settings = () => {
                 </div>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full gradient-primary glow-primary"
-              >
+              <Button type="submit" className="w-full">
                 <Save className="w-4 h-4 mr-2" />
                 Salvar Configurações
               </Button>

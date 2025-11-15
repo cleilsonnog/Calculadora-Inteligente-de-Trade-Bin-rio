@@ -14,6 +14,7 @@ import { supabase } from "./integrations/supabase/client"; // Ajuste o caminho s
 import ProtectedRoute from "./components/ProtectedRoute"; // 🔹
 import { AuthProvider } from "./contexts/AuthContext"; // 🔹
 import { SubscriptionProvider } from "./contexts/SubscriptionContext"; // 🔹
+import { ConfigProvider } from "./contexts/ConfigContext";
 
 const queryClient = new QueryClient();
 
@@ -77,7 +78,9 @@ const App = () => (
         {/* 🔹 Envolve as rotas com os providers para que os contextos fiquem disponíveis */}
         <AuthProvider>
           <SubscriptionProvider>
-            <AppRoutes />
+            <ConfigProvider>
+              <AppRoutes />
+            </ConfigProvider>
           </SubscriptionProvider>
         </AuthProvider>
       </BrowserRouter>
