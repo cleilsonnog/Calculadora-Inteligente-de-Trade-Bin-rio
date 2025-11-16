@@ -150,11 +150,9 @@ const Landing = () => {
       );
 
       if (error) throw error;
-      const stripe = await getStripe();
-      if (!stripe) throw new Error("Stripe.js not loaded");
 
-      // Redirect to Stripe Checkout
-      await stripe.redirectToCheckout({ sessionId: data.sessionId });
+      // Redireciona para a URL de checkout do Stripe
+      window.location.href = data.url;
     } catch (error: unknown) {
       console.error("Error during checkout:", error);
 

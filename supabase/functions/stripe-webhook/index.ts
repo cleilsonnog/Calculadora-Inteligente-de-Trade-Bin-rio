@@ -53,21 +53,9 @@ const manageSubscriptionStatusChange = async (
   createAction: boolean,
   supabaseAdmin: SupabaseClient,
 ) => {
-  // Obtém o user_id do cliente na nossa tabela 'customers'
-  const { data: customerData, error: customerError } = await supabaseAdmin
-    .from("customers")
-    .select("id")
-    .eq("stripe_customer_id", customerId)
-    .single();
-
-  if (customerError) throw customerError;
-
-  const { id: userId } = customerData;
-
-  // A instância do Stripe deve ser passada para a função ou criada aqui com a chave
   const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY")!;
   const stripe = new Stripe(stripeSecretKey, {
-    apiVersion: "2022-11-15",
+    apiVersion: "2024-06-20",
     httpClient: Stripe.createFetchHttpClient(),
   });
   const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
@@ -76,7 +64,13 @@ const manageSubscriptionStatusChange = async (
 
   const subscriptionData = {
     id: subscription.id,
-    user_id: userId,
+    // Usa o client_reference_id da sessão de checkout se disponível,
+    // caso contrário, busca o ID do cliente. Isso torna o webhook mais robusto.
+    user_id: subscription.metadata.user_id ||
+      (await supabaseAdmin.from("customers").select("id").eq(
+        "stripe_customer_id",
+        customerId,
+      ).single())?.data?.id,
     status: subscription.status,
     metadata: subscription.metadata,
     price_id: subscription.items.data[0].price.id,
@@ -113,6 +107,19 @@ const manageSubscriptionStatusChange = async (
   console.log(
     `Subscription ${createAction ? "created" : "updated"}: ${subscription.id}`,
   );
+
+  // Adiciona o user_id aos metadados da assinatura no Stripe para uso futuro
+  if (createAction && subscriptionData.user_id) {
+    await stripe.subscriptions.update(subscription.id, {
+      metadata: {
+        ...subscription.metadata,
+        user_id: subscriptionData.user_id,
+      },
+    });
+    console.log(
+      `Added user_id to subscription metadata: ${subscription.id}`,
+    );
+  }
 };
 
 serve(async (req) => {
@@ -145,7 +152,7 @@ serve(async (req) => {
     const body = await req.text();
     // Inicializa o Stripe com a chave secreta
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2022-11-15",
+      apiVersion: "2024-06-20",
       httpClient: Stripe.createFetchHttpClient(),
     });
 
@@ -188,13 +195,14 @@ serve(async (req) => {
 
       case "checkout.session.completed":
         {
-          const checkoutSession = event.data.object;
+          const checkoutSession = event.data.object as Stripe.Checkout.Session;
           if (
             checkoutSession.mode === "subscription" &&
             checkoutSession.subscription
           ) {
             // Se a sessão de checkout for de assinatura e tiver um ID de assinatura,
             // gerencie a mudança de status (criação/atualização)
+            // O client_reference_id (user.id) é passado para a função manageSubscriptionStatusChange via metadados
             await manageSubscriptionStatusChange(
               checkoutSession.subscription as string,
               checkoutSession.customer as string,

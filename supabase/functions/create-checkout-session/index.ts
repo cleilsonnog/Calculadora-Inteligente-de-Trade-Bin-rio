@@ -16,12 +16,16 @@ serve(async (req) => {
     const siteUrl = Deno.env.get("SITE_URL");
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     // Verificação individual para saber exatamente qual variável está faltando
     if (!stripeSecretKey) throw new Error("Missing env var: STRIPE_SECRET_KEY");
     if (!siteUrl) throw new Error("Missing env var: SITE_URL");
     if (!supabaseUrl) throw new Error("Missing env var: SUPABASE_URL");
     if (!supabaseAnonKey) throw new Error("Missing env var: SUPABASE_ANON_KEY");
+    if (!supabaseServiceKey) {
+      throw new Error("Missing env var: SUPABASE_SERVICE_ROLE_KEY");
+    }
 
     // Inicializa o Stripe com a chave secreta
     const stripe = new Stripe(stripeSecretKey, {
@@ -65,31 +69,41 @@ serve(async (req) => {
       const newStripeCustomer = await stripe.customers.create(customerData);
       const stripe_customer_id = newStripeCustomer.id;
 
+      // Cria um cliente admin para inserir na tabela 'customers'
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
       // Salva o novo ID do cliente no nosso banco de dados
-      await supabaseClient
+      const { error: insertError } = await supabaseAdmin
         .from("customers")
-        .insert({ id: user.id, stripe_customer_id })
-        .select();
+        .insert({ id: user.id, stripe_customer_id });
+
+      if (insertError) {
+        throw new Error(
+          `Failed to create customer in DB: ${insertError.message}`,
+        );
+      }
 
       customer = { stripe_customer_id };
     }
 
     // 6. Cria a sessão de checkout no Stripe
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card", "pix"], // ⬅️ MELHORIA: Habilita Cartão e PIX
       customer: customer.stripe_customer_id,
       line_items: [{ price: priceId, quantity: 1 }],
       mode: "subscription", // Define que é uma assinatura
       client_reference_id: user.id, // ⬅️ ADICIONADO: Vincula a sessão ao ID do usuário do Supabase
       subscription_data: {
         trial_from_plan: true, // Usa o período de teste definido no plano do Stripe
+        metadata: {
+          user_id: user.id, // Passa o user_id para a assinatura
+        },
       },
       success_url: `${siteUrl}/app`, // Redireciona para o app após sucesso
       cancel_url: `${siteUrl}/`, // Redireciona para a landing page se cancelar
     });
 
-    // 7. Retorna o ID da sessão para o frontend
-    return new Response(JSON.stringify({ sessionId: session.id }), {
+    // 7. Retorna a URL da sessão para o frontend
+    return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
