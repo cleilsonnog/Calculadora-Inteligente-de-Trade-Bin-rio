@@ -430,8 +430,9 @@ const Index = () => {
   const handleReset = (saveSession = true) => {
     if (!config) return;
 
-    if (saveSession) {
-      saveDailyHistory(); // Salva a sessão atual antes de resetar
+    // 🔹 CORREÇÃO: Salva a sessão apenas se houver operações e não tiver sido salva ainda.
+    if (saveSession && operations.length > 0 && !isSessionSaved) {
+      saveDailyHistory();
     }
 
     let initialEntry = 0;

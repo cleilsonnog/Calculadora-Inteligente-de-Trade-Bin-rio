@@ -1,4 +1,4 @@
-import { useEffect, useState, HTMLAttributes } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +15,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import {
   ArrowLeft,
@@ -28,6 +30,7 @@ import {
   MinusCircle,
   Filter,
   X,
+  Save,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays } from "date-fns";
@@ -62,6 +65,10 @@ const DailyHistory = () => {
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(
     null
   );
+  // Estado para editar a observação dentro do modal
+  const [observationEditText, setObservationEditText] = useState("");
+  const [isSavingObservation, setIsSavingObservation] = useState(false);
+
   const [date, setDate] = useState<DateRange | undefined>(undefined);
   const [modeFilter, setModeFilter] = useState<"real" | "training" | "all">(
     "real"
@@ -76,6 +83,13 @@ const DailyHistory = () => {
     fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, modeFilter]); // ⬅️ Refetch when date range or mode changes
+
+  // Efeito para popular o campo de edição quando um registro é selecionado
+  useEffect(() => {
+    if (selectedRecord) {
+      setObservationEditText(selectedRecord.observacoes || "");
+    }
+  }, [selectedRecord]);
 
   const fetchHistory = async () => {
     try {
@@ -162,6 +176,45 @@ const DailyHistory = () => {
     }
   };
 
+  // Função para salvar a observação editada no modal
+  const handleSaveObservation = async () => {
+    if (!selectedRecord) return;
+
+    setIsSavingObservation(true);
+    try {
+      const { error } = await supabase
+        .from("historico_operacoes")
+        .update({ observacoes: observationEditText })
+        .eq("id", selectedRecord.id);
+
+      if (error) throw error;
+
+      // Atualiza o estado local para refletir a mudança imediatamente
+      const updatedRecord = {
+        ...selectedRecord,
+        observacoes: observationEditText,
+      };
+      setSelectedRecord(updatedRecord);
+      setRecords((prev) =>
+        prev.map((r) => (r.id === selectedRecord.id ? updatedRecord : r))
+      );
+
+      toast({
+        title: "Observação salva!",
+        description: "Sua anotação foi atualizada com sucesso.",
+      });
+    } catch (error) {
+      console.error("Erro ao salvar observação:", error);
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível atualizar a observação.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingObservation(false);
+    }
+  };
+
   const getStatusConfig = (status: string) => {
     switch (status.toLowerCase()) {
       case "meta":
@@ -228,6 +281,9 @@ const DailyHistory = () => {
           </Button>
           <div className="flex-1">
             <h1 className="text-3xl font-bold">Histórico Diário</h1>
+            <p className="text-muted-foreground">
+              Click em um dia para ver detalhes e adicionar observações
+            </p>
             <p className="text-muted-foreground">
               Filtre e analise seus resultados
             </p>
@@ -406,6 +462,8 @@ const DailyHistory = () => {
             </DialogHeader>
             {selectedRecord && (
               <div className="space-y-4">
+                {" "}
+                //space-y-4 max-h-[70vh] overflow-y-auto pr-2//
                 <div className="bg-muted/50 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Data:</span>
@@ -456,15 +514,26 @@ const DailyHistory = () => {
                     </span>
                   </div>
                 </div>
-                {selectedRecord.observacoes && (
-                  <div className="bg-muted/50 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold mb-2">Observações:</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedRecord.observacoes}
-                    </p>
-                  </div>
-                )}
-
+                {/* CAMPO DE OBSERVAÇÃO EDITÁVEL */}
+                <div className="space-y-2">
+                  <Label htmlFor="observation-edit">Observações</Label>
+                  <Textarea
+                    id="observation-edit"
+                    placeholder="Adicione uma nota sobre esta sessão..."
+                    value={observationEditText}
+                    onChange={(e) => setObservationEditText(e.target.value)}
+                    className="h-24"
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleSaveObservation}
+                    disabled={isSavingObservation}
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {isSavingObservation ? "Salvando..." : "Salvar Observação"}
+                  </Button>
+                </div>
                 {/* SEÇÃO PARA OPERAÇÕES INDIVIDUAIS */}
                 <div className="pt-4 border-t border-border">
                   <h4 className="text-sm font-semibold mb-3">
@@ -518,7 +587,6 @@ const DailyHistory = () => {
                     </p>
                   )}
                 </div>
-
                 <Button
                   onClick={() => setSelectedRecord(null)}
                   variant="outline"
