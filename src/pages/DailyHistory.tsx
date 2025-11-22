@@ -31,6 +31,7 @@ import {
   Filter,
   X,
   Save,
+  Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays } from "date-fns";
@@ -68,6 +69,7 @@ const DailyHistory = () => {
   // Estado para editar a observação dentro do modal
   const [observationEditText, setObservationEditText] = useState("");
   const [isSavingObservation, setIsSavingObservation] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [date, setDate] = useState<DateRange | undefined>(undefined);
   const [modeFilter, setModeFilter] = useState<"real" | "training" | "all">(
@@ -212,6 +214,53 @@ const DailyHistory = () => {
       });
     } finally {
       setIsSavingObservation(false);
+    }
+  };
+
+  // Função para excluir uma sessão
+  const handleDeleteSession = async () => {
+    if (!selectedRecord) return;
+
+    const isConfirmed = window.confirm(
+      "Tem certeza que deseja excluir esta sessão? Todas as operações vinculadas serão perdidas permanentemente. Esta ação não pode ser desfeita."
+    );
+
+    if (!isConfirmed) return;
+
+    setIsDeleting(true);
+    try {
+      // 1. Excluir as operações individuais vinculadas
+      const { error: opsError } = await supabase
+        .from("operacoes_individuais")
+        .delete()
+        .eq("historico_id", selectedRecord.id);
+
+      if (opsError) throw opsError;
+
+      // 2. Excluir o registro do histórico da sessão
+      const { error: historyError } = await supabase
+        .from("historico_operacoes")
+        .delete()
+        .eq("id", selectedRecord.id);
+
+      if (historyError) throw historyError;
+
+      // 3. Atualizar a UI
+      toast({
+        title: "Sessão excluída!",
+        description: "O registro da sessão foi removido com sucesso.",
+      });
+      setRecords((prev) => prev.filter((r) => r.id !== selectedRecord.id));
+      setSelectedRecord(null); // Fecha o modal
+    } catch (error) {
+      console.error("Erro ao excluir sessão:", error);
+      toast({
+        title: "Erro ao excluir",
+        description: "Não foi possível remover a sessão.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -588,14 +637,27 @@ const DailyHistory = () => {
                   )}
                 </div>
 
-                <Button
-                  onClick={() => setSelectedRecord(null)}
-                  variant="outline"
-                  className="w-full"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Voltar
-                </Button>
+                {/* BOTÕES DE AÇÃO DO MODAL */}
+                <div className="flex flex-col-reverse sm:flex-row gap-2 pt-4 border-t border-border">
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteSession}
+                    disabled={isDeleting}
+                    className="w-full sm:w-auto"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {isDeleting ? "Excluindo..." : "Excluir Sessão"}
+                  </Button>
+                  <div className="flex-1" />
+                  <Button
+                    onClick={() => setSelectedRecord(null)}
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Fechar
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>

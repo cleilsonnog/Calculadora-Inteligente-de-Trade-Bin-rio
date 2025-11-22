@@ -19,6 +19,7 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState(""); // ⬅️ NOVO ESTADO PARA O NOME
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -43,6 +44,11 @@ const Auth = () => {
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            data: {
+              name: name, // ⬅️ SALVANDO O NOME NO METADADO DO USUÁRIO
+            },
+          },
         });
         if (error) throw error;
         toast.info(
@@ -89,6 +95,19 @@ const Auth = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleAuth} className="space-y-4">
+            {!isLogin && ( // ⬅️ MOSTRA O CAMPO DE NOME APENAS NO CADASTRO
+              <div className="space-y-2">
+                <Label htmlFor="name">Nome</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Seu nome completo"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required={!isLogin}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -123,7 +142,13 @@ const Auth = () => {
           </form>
         </CardContent>
         <CardFooter className="flex justify-center">
-          <Button variant="link" onClick={() => setIsLogin(!isLogin)}>
+          <Button
+            variant="link"
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setName(""); // Limpa o campo de nome ao alternar
+            }}
+          >
             {isLogin
               ? "Não tem uma conta? Cadastre-se"
               : "Já tem uma conta? Faça login"}

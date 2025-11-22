@@ -545,6 +545,11 @@ const Index = () => {
                   Calculadora de Trade Binário
                 </h1>
               </div>
+              {/* MENSAGEM DE BOAS-VINDAS PERSONALIZADA */}
+              <p className="text-sm text-muted-foreground mt-1">
+                Seja bem-vindo(a),{" "}
+                {session?.user?.user_metadata?.name || session?.user?.email}!
+              </p>
               <p className="text-lg font-medium text-muted-foreground mt-1">
                 {tradeMode === "real" ? "Conta Real" : "Conta de Treinamento"}
               </p>
