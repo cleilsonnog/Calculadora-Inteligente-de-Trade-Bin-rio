@@ -453,7 +453,7 @@ const DailyHistory = () => {
             if (!isOpen) setSelectedRecord(null);
           }}
         >
-          <DialogContent className="max-w-md">
+          <DialogContent className="w-[95vw] max-w-lg md:max-w-2xl max-h-[90vh] overflow-hidden">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CalendarIcon className="h-5 w-5" />
@@ -461,7 +461,7 @@ const DailyHistory = () => {
               </DialogTitle>
             </DialogHeader>
             {selectedRecord && (
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
                 <div className="bg-muted/50 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Data:</span>
