@@ -462,8 +462,6 @@ const DailyHistory = () => {
             </DialogHeader>
             {selectedRecord && (
               <div className="space-y-4">
-                {" "}
-                //space-y-4 max-h-[70vh] overflow-y-auto pr-2//
                 <div className="bg-muted/50 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Data:</span>
@@ -514,6 +512,7 @@ const DailyHistory = () => {
                     </span>
                   </div>
                 </div>
+
                 {/* CAMPO DE OBSERVAÇÃO EDITÁVEL */}
                 <div className="space-y-2">
                   <Label htmlFor="observation-edit">Observações</Label>
@@ -534,6 +533,7 @@ const DailyHistory = () => {
                     {isSavingObservation ? "Salvando..." : "Salvar Observação"}
                   </Button>
                 </div>
+
                 {/* SEÇÃO PARA OPERAÇÕES INDIVIDUAIS */}
                 <div className="pt-4 border-t border-border">
                   <h4 className="text-sm font-semibold mb-3">
@@ -587,6 +587,7 @@ const DailyHistory = () => {
                     </p>
                   )}
                 </div>
+
                 <Button
                   onClick={() => setSelectedRecord(null)}
                   variant="outline"
