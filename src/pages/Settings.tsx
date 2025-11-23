@@ -11,10 +11,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Settings as SettingsIcon, ArrowLeft, Save } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  ArrowLeft,
+  Save,
+  CreditCard,
+  ExternalLink,
+} from "lucide-react";
 import { toast } from "sonner";
 import { TradeConfig, ConfigValue, OldTradeConfig } from "./Index";
 import { useConfig } from "@/contexts/ConfigContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { differenceInDays, format } from "date-fns";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const Settings = () => {
@@ -35,7 +43,12 @@ const Settings = () => {
     type: "percentage",
   });
 
+  // Estados para gerenciamento de assinatura
+  const { subscription, loading: subscriptionLoading } = useSubscription();
+  const [isManagingSubscription, setIsManagingSubscription] = useState(false);
+
   const { config, loading: configLoading, refreshConfig } = useConfig();
+  const pageLoading = configLoading || subscriptionLoading;
 
   useEffect(() => {
     // Quando o contexto carregar a configuração, preenchemos os campos do formulário.
@@ -47,9 +60,8 @@ const Settings = () => {
         setDailyGoal(config.dailyGoal);
         setStopLoss(config.stopLoss);
       }
-      setLoading(false); // Finaliza o loading da página
     }
-  }, [config, configLoading]);
+  }, [config, configLoading]); // A dependência de configLoading garante que isso rode quando o estado de loading mudar
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +96,38 @@ const Settings = () => {
     }
   };
 
-  if (loading) {
+  const handleManageSubscription = async () => {
+    setIsManagingSubscription(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "create-portal-link"
+      );
+
+      if (error) throw error;
+
+      // Redireciona para a URL do portal do cliente Stripe
+      window.location.href = data.url;
+    } catch (error: unknown) {
+      console.error("Error creating portal link:", error);
+      let message = "Ocorreu um erro ao tentar gerenciar sua assinatura.";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      toast.error(message);
+    } finally {
+      setIsManagingSubscription(false);
+    }
+  };
+
+  const getRemainingDays = () => {
+    if (!subscription?.current_period_end) return 0;
+    return differenceInDays(
+      new Date(subscription.current_period_end),
+      new Date()
+    );
+  };
+
+  if (pageLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -96,7 +139,7 @@ const Settings = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
+    <div className="min-h-screen bg-background p-4 md:p-8 space-y-8">
       <div className="max-w-3xl mx-auto">
         <Button
           variant="outline"
@@ -106,6 +149,62 @@ const Settings = () => {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Voltar
         </Button>
+
+        {/* SEÇÃO DE ASSINATURA */}
+        <Card className="glass-effect border-primary/20 animate-fade-in mb-8">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-primary" />
+              <CardTitle>Assinatura</CardTitle>
+            </div>
+            <CardDescription>
+              Gerencie seu plano e acesso à plataforma.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {subscription && subscription.status === "active" ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-green-500/10 rounded-md">
+                  <p className="font-semibold text-green-600">Plano Ativo</p>
+                  {subscription.current_period_end && (
+                    <p className="text-sm text-muted-foreground">
+                      Seu acesso expira em{" "}
+                      <span className="font-bold text-foreground">
+                        {getRemainingDays()} dias
+                      </span>{" "}
+                      (
+                      {format(
+                        new Date(subscription.current_period_end),
+                        "dd/MM/yyyy"
+                      )}
+                      )
+                    </p>
+                  )}
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={handleManageSubscription}
+                  disabled={isManagingSubscription}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  {isManagingSubscription
+                    ? "Carregando..."
+                    : "Gerenciar Assinatura"}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4 text-center">
+                <p className="font-semibold text-yellow-500">Plano Inativo</p>
+                <p className="text-sm text-muted-foreground">
+                  Você não possui uma assinatura ativa.
+                </p>
+                <Button className="w-full" onClick={() => navigate("/")}>
+                  Ver Planos
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card className="glass-effect border-primary/20 animate-scale-in">
           <CardHeader>
