@@ -330,21 +330,21 @@ const Landing = () => {
               reservados.
             </p>
             <div className="flex gap-6 text-sm">
-              <a
-                href="#"
+              {/*<a
+                href="mailto:cleilsonnogueira45@gmail.com?subject=Suporte - Calculadora de Trade"
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
                 Suporte
-              </a>
+              </a>*/}
               <a
-                href="#"
+                href="mailto:cleilsonnogueira45@gmail.com?subject=Contato - Calculadora de Trade"
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
                 Contato
               </a>
               <a
-                href="#"
-                className="text-muted-foreground hover:text-primary transition-colors"
+                onClick={() => navigate("/termos-de-uso")}
+                className="text-muted-foreground hover:text-primary transition-colors cursor-pointer"
               >
                 Termos de Uso
               </a>

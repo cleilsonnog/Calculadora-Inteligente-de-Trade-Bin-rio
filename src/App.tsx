@@ -15,6 +15,7 @@ import ProtectedRoute from "./components/ProtectedRoute"; // 🔹
 import { AuthProvider } from "./contexts/AuthContext"; // 🔹
 import { SubscriptionProvider } from "./contexts/SubscriptionContext"; // 🔹
 import { ConfigProvider } from "./contexts/ConfigContext";
+import TermsOfUse from "./pages/TermsOfUse";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,8 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/termos-de-uso" element={<TermsOfUse />} />
+
       <Route
         path="/app"
         element={
