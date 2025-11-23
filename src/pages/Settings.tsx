@@ -99,13 +99,29 @@ const Settings = () => {
   const handleManageSubscription = async () => {
     setIsManagingSubscription(true);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "create-portal-link"
-      );
+      // 🔐 pega o token do usuário
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
+      if (!session) {
+        toast.error("Você precisa estar logado.");
+        return;
+      }
+
+      // 🔥 envia token manualmente
+      const { data, error } = await supabase.functions.invoke(
+        "create-portal-link",
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      console.log("SESSION FRONT:", session);
       if (error) throw error;
 
-      // Redireciona para a URL do portal do cliente Stripe
+      // Redireciona para o portal da Stripe
       window.location.href = data.url;
     } catch (error: unknown) {
       console.error("Error creating portal link:", error);
