@@ -12,7 +12,7 @@ import {
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext"; // 1. Importar o useAuth
 import { useSubscription } from "@/contexts/SubscriptionContext"; // 2. Importar o useSubscription
-import { SupabaseClient, supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client"; //SupabaseClient retirei de dentro do bigode
 import { getStripe } from "@/integrations/stripe/client";
 import { Stripe } from "@stripe/stripe-js";
 import { toast } from "sonner";
