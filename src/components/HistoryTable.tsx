@@ -148,7 +148,7 @@ export const HistoryTable = ({
                   (operations.filter((op) => op.result === "win").length /
                     operations.length) *
                   100
-                ).toFixed(1)}
+                ).toFixed(0)}
                 %
               </p>
             </div>

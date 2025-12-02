@@ -253,12 +253,47 @@ const Index = () => {
     [config, user, goalReached, stopLossReached, tradeMode]
   );
 
+  // 🔹 NOVA FUNÇÃO: Atualiza a banca inicial na configuração do usuário
+  const updateInitialBankroll = useCallback(
+    async (newBankroll: number) => {
+      if (!user || !config) return;
+
+      // 🔹 CORREÇÃO: Arredonda o valor para duas casas decimais ANTES de salvar.
+      const roundedNewBankroll = parseFloat(newBankroll.toFixed(2));
+
+      const newConfig: TradeConfig = {
+        ...config,
+        initialBankroll: roundedNewBankroll,
+      };
+
+      const { error } = await supabase
+        .from("user_configs")
+        .update({ initial_bankroll: roundedNewBankroll })
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Erro ao atualizar a banca inicial:", error);
+        toast.error("Falha ao atualizar a banca para a próxima sessão.");
+      } else {
+        // Atualiza o estado global da configuração para refletir a mudança
+        setGlobalConfig(newConfig);
+        toast.info(
+          `💰 Banca inicial da próxima sessão atualizada para R$ ${roundedNewBankroll.toFixed(
+            2
+          )}`
+        );
+      }
+    },
+    [user, config, setGlobalConfig]
+  );
+
   useEffect(() => {
     // 🔹 CORREÇÃO: Só verifica meta/stop se houver configuração E operações.
     if (!config || operations.length === 0) return;
 
     // Calcula lucro atual
-    let currentProfit = bankroll - config.initialBankroll;
+    // Usa bankrollRef para garantir o valor mais atualizado
+    let currentProfit = bankrollRef.current - config.initialBankroll;
     let adjustedBankroll = bankroll;
 
     // Limite de ganho e perda
@@ -290,6 +325,7 @@ const Index = () => {
       setBankroll(adjustedBankroll);
       setTotalProfit(currentProfit);
       saveDailyHistory(status);
+      updateInitialBankroll(bankrollRef.current); // ⬅️ ATUALIZA A BANCA PARA A PRÓXIMA SESSÃO
       return; // já finaliza o effect
     }
 
@@ -309,6 +345,7 @@ const Index = () => {
       setBankroll(adjustedBankroll);
       setTotalProfit(currentProfit);
       saveDailyHistory(status);
+      updateInitialBankroll(adjustedBankroll); // ⬅️ ATUALIZA A BANCA PARA A PRÓXIMA SESSÃO
       return; // já finaliza o effect
     }
 
@@ -321,6 +358,7 @@ const Index = () => {
     stopLossReached,
     saveDailyHistory,
     operations.length,
+    updateInitialBankroll, // ⬅️ Adicionando a nova dependência
   ]);
 
   // Salva a sessão quando o usuário sai da página
@@ -431,9 +469,12 @@ const Index = () => {
   const handleReset = async (saveSession = true) => {
     if (!config) return;
 
+    const finalBankroll = bankrollRef.current; // Captura a banca final antes de qualquer reset
+
     // 🔹 CORREÇÃO: Salva a sessão apenas se houver operações e não tiver sido salva ainda.
     if (saveSession && operations.length > 0 && !isSessionSaved) {
       await saveDailyHistory(); // ⬅️ AGUARDA o salvamento antes de continuar
+      await updateInitialBankroll(finalBankroll); // ⬅️ ATUALIZA A BANCA PARA A PRÓXIMA SESSÃO
     }
 
     let initialEntry = 0;
