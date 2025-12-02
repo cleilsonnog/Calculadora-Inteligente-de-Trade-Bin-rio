@@ -1,12 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  CheckCircle,
-  XCircle,
   RotateCcw,
   TrendingUp,
   ThumbsDown,
   ThumbsUp,
+  Save,
 } from "lucide-react";
 
 interface TradeControlsProps {
@@ -15,6 +14,7 @@ interface TradeControlsProps {
   onLoss: () => void;
   onConservativeLoss: () => void;
   onReset: () => void;
+  onEndSession: () => void;
   disabled: boolean;
 }
 
@@ -24,6 +24,7 @@ export const TradeControls = ({
   onLoss,
   onConservativeLoss,
   onReset,
+  onEndSession,
   disabled,
 }: TradeControlsProps) => {
   return (
@@ -42,7 +43,7 @@ export const TradeControls = ({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Button
             onClick={onWin}
             disabled={disabled}
@@ -51,8 +52,7 @@ export const TradeControls = ({
             <ThumbsUp /> Win
           </Button>
 
-          {/* Agrupamento dos Botões de Loss */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:col-span-2">
             <Button
               onClick={onLoss}
               disabled={disabled}
@@ -77,9 +77,19 @@ export const TradeControls = ({
           </div>
 
           <Button
-            onClick={onReset}
+            onClick={onEndSession}
             variant="outline"
-            className="text-lg py-6 flex flex-col h-full gap-2"
+            disabled={disabled}
+            className="text-lg py-6 flex flex-col h-full gap-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 hover:text-blue-400 border-blue-500/20"
+          >
+            <Save /> Encerrar
+          </Button>
+
+          {/* O botão de Reset foi movido para o final e agora ocupa uma coluna inteira em telas pequenas */}
+          <Button
+            onClick={() => onReset(true)} // Passando true para salvar a sessão ao resetar
+            variant="outline"
+            className="text-lg py-6 flex flex-col h-full gap-2 col-span-2 md:col-span-1" // ⬅️ A classe 'col-span-2' agora se aplica apenas a telas pequenas
           >
             <RotateCcw /> Resetar Dia
           </Button>

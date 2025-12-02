@@ -14,6 +14,7 @@ import {
   History,
   Home,
   Repeat,
+  Save,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConfig } from "@/contexts/ConfigContext";
@@ -427,12 +428,12 @@ const Index = () => {
     });
   };
 
-  const handleReset = (saveSession = true) => {
+  const handleReset = async (saveSession = true) => {
     if (!config) return;
 
     // 🔹 CORREÇÃO: Salva a sessão apenas se houver operações e não tiver sido salva ainda.
     if (saveSession && operations.length > 0 && !isSessionSaved) {
-      saveDailyHistory();
+      await saveDailyHistory(); // ⬅️ AGUARDA o salvamento antes de continuar
     }
 
     let initialEntry = 0;
@@ -451,6 +452,19 @@ const Index = () => {
     setIsSessionSaved(false);
 
     toast.info("🔄 Banca resetada para novo dia de operações");
+  };
+
+  const handleEndSession = async () => {
+    if (!config || operations.length === 0) {
+      toast.info("Nenhuma operação para salvar.");
+      return;
+    }
+    if (isSessionSaved) {
+      toast.info("A sessão atual já foi salva.");
+      return;
+    }
+    // Reutiliza a lógica de reset, que já contém a chamada para saveDailyHistory
+    await handleReset(true); // ⬅️ AGUARDA o reset (e o salvamento)
   };
 
   const handleClearHistory = () => {
@@ -619,6 +633,7 @@ const Index = () => {
           onLoss={handleLoss}
           onConservativeLoss={handleConservativeLoss} // ⬅️ Passando a nova função
           onReset={handleReset}
+          onEndSession={handleEndSession}
           disabled={goalReached || stopLossReached}
         />
 
