@@ -193,7 +193,7 @@ const Landing = () => {
         <section className="container mx-auto px-4 py-16 md:py-24 text-center">
           <div className="space-y-6 animate-fade-slide-down">
             <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent drop-shadow-md">
-              Calculadora Inteligente de Trade Binário
+              Calculadora Suprema de Trader
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground">
               Gerencie sua banca e acompanhe seu desempenho com precisão
@@ -326,7 +326,7 @@ const Landing = () => {
         <footer className="border-t border-border mt-16">
           <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm text-muted-foreground">
-              © 2025 Calculadora Inteligente de Trade Binário. Todos os direitos
+              © 2025 Calculadora Suprema de Trader. Todos os direitos
               reservados.
             </p>
             <div className="flex gap-6 text-sm">
