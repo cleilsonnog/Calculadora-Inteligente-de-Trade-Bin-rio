@@ -1,5 +1,4 @@
 {
-  "homepage": "https://cleilsonnog.github.io/Calculadora-Inteligente-de-Trade-Bin-rio",
   "name": "vite_react_shadcn_ts",
   "private": true,
   "version": "0.0.0",
@@ -10,8 +9,6 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint . --fix",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
     "supabase": "supabase functions deploy"
   },
   "dependencies": {
