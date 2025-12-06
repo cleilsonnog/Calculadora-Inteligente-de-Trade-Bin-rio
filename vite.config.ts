@@ -5,7 +5,7 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: "/",
+  base: "/Calculadora-Inteligente-de-Trade-Bin-rio",
   server: {
     host: "::",
     port: 8080,
