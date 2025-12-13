@@ -109,7 +109,7 @@ export const HistoryTable = ({
                     R$ {op.bankrollAfter.toFixed(2)}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
-                    {op.timestamp.toLocaleTimeString()}
+                    {new Date(op.timestamp).toLocaleTimeString()}
                   </TableCell>
                 </TableRow>
               ))}

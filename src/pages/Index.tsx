@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConfig } from "@/contexts/ConfigContext";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 
 export interface ConfigValue {
   value: number;
@@ -54,14 +55,36 @@ type TradeMode = "real" | "training";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [bankroll, setBankroll] = useState(0);
-  const [currentEntry, setCurrentEntry] = useState(0);
-  const [operations, setOperations] = useState<TradeOperation[]>([]);
-  const [totalProfit, setTotalProfit] = useState(0);
-  const [goalReached, setGoalReached] = useState(false);
-  const [stopLossReached, setStopLossReached] = useState(false);
-  const [isSessionSaved, setIsSessionSaved] = useState(false);
-  const [tradeMode, setTradeMode] = useState<TradeMode>("real");
+  // 🔹 Substituindo useState por useLocalStorageState para persistir os dados da sessão
+  const [bankroll, setBankroll] = useLocalStorageState("session:bankroll", 0);
+  const [currentEntry, setCurrentEntry] = useLocalStorageState(
+    "session:currentEntry",
+    0
+  );
+  const [operations, setOperations] = useLocalStorageState<TradeOperation[]>(
+    "session:operations",
+    []
+  );
+  const [totalProfit, setTotalProfit] = useLocalStorageState(
+    "session:totalProfit",
+    0
+  );
+  const [goalReached, setGoalReached] = useLocalStorageState(
+    "session:goalReached",
+    false
+  );
+  const [stopLossReached, setStopLossReached] = useLocalStorageState(
+    "session:stopLossReached",
+    false
+  );
+  const [isSessionSaved, setIsSessionSaved] = useLocalStorageState(
+    "session:isSessionSaved",
+    false
+  );
+  const [tradeMode, setTradeMode] = useLocalStorageState<TradeMode>(
+    "session:tradeMode",
+    "real"
+  );
 
   // O usuário e o estado de carregamento agora são gerenciados por AuthContext e ProtectedRoute.
   // Este componente apenas reage à presença de um usuário e configuração.
@@ -88,14 +111,6 @@ const Index = () => {
   }, [operations]);
 
   useEffect(() => {
-    // Carrega o modo de trade do localStorage quando o componente monta
-    const savedMode = localStorage.getItem("tradeMode") as TradeMode;
-    if (savedMode) {
-      setTradeMode(savedMode);
-    }
-  }, []);
-
-  useEffect(() => {
     if (config) {
       let initialEntry = 0;
       if (config.entry.type === "percentage") {
@@ -104,15 +119,13 @@ const Index = () => {
         initialEntry = config.entry.value;
       }
 
-      setCurrentEntry(initialEntry);
-      setBankroll(config.initialBankroll);
+      // Apenas define os valores iniciais se não houver operações salvas
+      if (operations.length === 0) {
+        setCurrentEntry(initialEntry);
+        setBankroll(config.initialBankroll);
+      }
     }
-  }, [config]);
-
-  // Salva o modo de trade no localStorage sempre que ele mudar
-  useEffect(() => {
-    localStorage.setItem("tradeMode", tradeMode);
-  }, [tradeMode]);
+  }, [config, operations.length, setBankroll, setCurrentEntry]);
 
   const saveDailyHistory = useCallback(
     async (statusOverride?: "Meta" | "Stop") => {
@@ -250,7 +263,7 @@ const Index = () => {
         toast.error("Erro inesperado ao salvar histórico. Ver console.");
       }
     },
-    [config, user, goalReached, stopLossReached, tradeMode]
+    [config, user, goalReached, stopLossReached, tradeMode, setIsSessionSaved]
   );
 
   // 🔹 NOVA FUNÇÃO: Atualiza a banca inicial na configuração do usuário
@@ -359,6 +372,10 @@ const Index = () => {
     saveDailyHistory,
     operations.length,
     updateInitialBankroll, // ⬅️ Adicionando a nova dependência
+    setBankroll,
+    setGoalReached,
+    setStopLossReached,
+    setTotalProfit,
   ]);
 
   // Salva a sessão quando o usuário sai da página
@@ -492,6 +509,15 @@ const Index = () => {
     setStopLossReached(false);
     setIsSessionSaved(false);
 
+    // 🔹 Limpa o localStorage para a próxima sessão
+    localStorage.removeItem("session:bankroll");
+    localStorage.removeItem("session:currentEntry");
+    localStorage.removeItem("session:operations");
+    localStorage.removeItem("session:totalProfit");
+    localStorage.removeItem("session:goalReached");
+    localStorage.removeItem("session:stopLossReached");
+    localStorage.removeItem("session:isSessionSaved");
+
     toast.info("🔄 Banca resetada para novo dia de operações");
   };
 
@@ -510,6 +536,7 @@ const Index = () => {
 
   const handleClearHistory = () => {
     setOperations([]);
+    localStorage.removeItem("session:operations"); // Limpa também do localStorage
     toast.info("🗑️ Histórico limpo");
   };
 
