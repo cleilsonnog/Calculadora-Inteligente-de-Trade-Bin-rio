@@ -140,7 +140,9 @@ const Landing = () => {
 
       if (!session) {
         toast.info("Você precisa fazer login para iniciar um teste.");
-        navigate("/auth");
+        // 🔹 Redireciona para o login, mas informa para onde voltar depois
+        const redirectUrl = `/auth?redirect=/checkout&priceId=${priceId}`;
+        navigate(redirectUrl);
         return;
       }
 

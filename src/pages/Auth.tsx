@@ -12,50 +12,104 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, LogIn } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Loader2, LogIn, Eye, EyeOff } from "lucide-react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState(""); // ⬅️ NOVO ESTADO PARA O NOME
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Função para redirecionar para o checkout
+  const redirectToCheckout = async (priceId: string) => {
+    toast.info("Redirecionando para o checkout...");
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "create-checkout-session",
+        { body: { priceId } }
+      );
+
+      if (error) throw error;
+
+      // Redireciona para a URL de checkout do Stripe
+      window.location.href = data.url;
+    } catch (error: unknown) {
+      console.error("Error during checkout redirect:", error);
+      let message = "Ocorreu um erro ao iniciar o pagamento.";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      toast.error(message);
+      setLoading(false); // Libera o botão em caso de erro
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
+    const searchParams = new URLSearchParams(location.search);
+    const redirectTo = searchParams.get("redirect");
+    const priceId = searchParams.get("priceId");
+
     try {
       if (isLogin) {
         // Handle Login
-        const { error } = await supabase.auth.signInWithPassword({
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        toast.success("Login realizado com sucesso!");
-        // Redireciona para a página principal. A própria Landing Page ou a ProtectedRoute
-        // decidirá para onde o usuário deve ir (planos ou app).
-        navigate("/");
+
+        if (session && redirectTo === "/checkout" && priceId) {
+          await redirectToCheckout(priceId);
+        } else {
+          toast.success("Login realizado com sucesso!");
+          navigate("/app");
+        }
       } else {
         // Handle Sign Up
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
-              name: name, // ⬅️ SALVANDO O NOME NO METADADO DO USUÁRIO
+              name: name,
             },
           },
         });
         if (error) throw error;
-        toast.info(
-          "Cadastro realizado! Verifique seu e-mail para confirmar a conta."
-        );
-        // Volta para a tela de login após o cadastro
-        setIsLogin(true);
+
+        // 🔹 VERIFICAÇÃO DE E-MAIL EXISTENTE
+        // Se o usuário já existe (identities.length > 0) mas a sessão é nula,
+        // significa que a conta existe mas não foi confirmada ou a senha está errada.
+        if (
+          data.user &&
+          data.user.identities &&
+          data.user.identities.length === 0
+        ) {
+          // Se o cadastro foi para um checkout, loga o usuário e redireciona
+          if (data.user && redirectTo === "/checkout" && priceId) {
+            toast.success("Cadastro realizado!");
+            await redirectToCheckout(priceId);
+          } else {
+            toast.info(
+              "Cadastro realizado! Verifique seu e-mail para confirmar a conta."
+            );
+            // Volta para a tela de login após o cadastro
+            setIsLogin(true);
+          }
+        } else {
+          toast.warning("Este e-mail já está cadastrado. Tente fazer o login.");
+        }
       }
     } catch (error: unknown) {
       // Narrow unknown to extract a user-friendly message without using `any`
@@ -120,15 +174,40 @@ const Auth = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Senha</Label>
+                {isLogin && (
+                  <Link
+                    to="/recuperar-senha"
+                    className="text-sm text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
+                  >
+                    Esqueceu a senha?
+                  </Link>
+                )}
+              </div>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-0 right-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (

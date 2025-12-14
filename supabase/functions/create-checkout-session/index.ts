@@ -51,14 +51,14 @@ serve(async (req) => {
     }
 
     // 4. Busca o stripe_customer_id do usuário no nosso banco de dados
-    let { data: customer, error } = await supabaseClient
-      .from("customers")
+    let { data: userConfig, error } = await supabaseClient
+      .from("user_configs") // ⬅️ CORRIGIDO: Usar a tabela 'user_configs'
       .select("stripe_customer_id")
-      .eq("id", user.id)
+      .eq("user_id", user.id) // ⬅️ CORRIGIDO: Usar a coluna 'user_id'
       .single();
 
     // 5. Se o usuário não for um cliente no Stripe ainda, cria um
-    if (error || !customer?.stripe_customer_id) {
+    if (error || !userConfig?.stripe_customer_id) {
       const customerData: { metadata: { user_id: string }; email?: string } = {
         metadata: { user_id: user.id },
       };
@@ -69,26 +69,23 @@ serve(async (req) => {
       const newStripeCustomer = await stripe.customers.create(customerData);
       const stripe_customer_id = newStripeCustomer.id;
 
-      // Cria um cliente admin para inserir na tabela 'customers'
+      // Cria um cliente admin para ATUALIZAR a tabela 'customers'
       const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-      // Salva o novo ID do cliente no nosso banco de dados
-      const { error: insertError } = await supabaseAdmin
-        .from("customers")
-        .insert({ id: user.id, stripe_customer_id });
+      // Atualiza o registro de configuração do usuário com o novo ID do Stripe
+      const { error: updateError } = await supabaseAdmin
+        .from("user_configs") // ⬅️ CORRIGIDO: Usar a tabela 'user_configs'
+        .update({ stripe_customer_id })
+        .eq("user_id", user.id); // ⬅️ CORRIGIDO: Usar a coluna 'user_id'
 
-      if (insertError) {
-        throw new Error(
-          `Failed to create customer in DB: ${insertError.message}`,
-        );
-      }
+      if (updateError) throw updateError;
 
-      customer = { stripe_customer_id };
+      userConfig = { stripe_customer_id };
     }
 
     // 6. Cria a sessão de checkout no Stripe
     const session = await stripe.checkout.sessions.create({
-      customer: customer.stripe_customer_id,
+      customer: userConfig.stripe_customer_id,
       line_items: [{ price: priceId, quantity: 1 }],
       mode: "subscription", // Define que é uma assinatura
       client_reference_id: user.id, // ⬅️ ADICIONADO: Vincula a sessão ao ID do usuário do Supabase

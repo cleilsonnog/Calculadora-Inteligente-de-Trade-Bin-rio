@@ -16,6 +16,7 @@ import { AuthProvider } from "./contexts/AuthContext"; // 🔹
 import { SubscriptionProvider } from "./contexts/SubscriptionContext"; // 🔹
 import { ConfigProvider } from "./contexts/ConfigContext";
 import TermsOfUse from "./pages/TermsOfUse";
+import PasswordReset from "./pages/PasswordReset";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,8 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/recuperar-senha" element={<PasswordReset />} />
+      <Route path="/update-password" element={<Auth />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
 
       <Route
