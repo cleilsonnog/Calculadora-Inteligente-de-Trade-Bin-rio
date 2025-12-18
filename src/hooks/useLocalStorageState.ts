@@ -1,31 +1,37 @@
+// useLocalStorageState.ts
 import { useState, useEffect } from "react";
+import localforage from "localforage";
 
-/**
- * Um hook customizado que se comporta como `useState`, mas persiste o estado no `localStorage` do navegador.
- * @param key A chave única para armazenar o valor no localStorage.
- * @param initialState O valor inicial a ser usado se não houver nada no localStorage.
- * @returns Um array contendo o valor do estado e a função para atualizá-lo, assim como o `useState`.
- */
 export function useLocalStorageState<T>(
   key: string,
   initialState: T
-): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const storedValue = localStorage.getItem(key);
-      return storedValue ? (JSON.parse(storedValue) as T) : initialState;
-    } catch (error) {
-      console.error(
-        `Erro ao ler do localStorage para a chave "${key}":`,
-        error
-      );
-      return initialState;
-    }
-  });
+): [T, React.Dispatch<React.SetStateAction<T>>, boolean] {
+  const [value, setValue] = useState<T>(initialState);
+  const [loaded, setLoaded] = useState(false);
 
+  // 🔹 Carrega do IndexedDB (PWA-safe)
   useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value]);
+    let mounted = true;
 
-  return [value, setValue];
+    localforage
+      .getItem<T>(key)
+      .then((stored) => {
+        if (!mounted) return;
+        if (stored !== null) setValue(stored);
+      })
+      .catch(console.error)
+      .finally(() => setLoaded(true));
+
+    return () => {
+      mounted = false;
+    };
+  }, [key]);
+
+  // 🔹 Salva no IndexedDB
+  useEffect(() => {
+    if (!loaded) return;
+    localforage.setItem(key, value).catch(console.error);
+  }, [key, value, loaded]);
+
+  return [value, setValue, loaded];
 }
