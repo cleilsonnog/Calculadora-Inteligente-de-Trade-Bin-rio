@@ -5,7 +5,9 @@ import { ConfigPanel } from "../components/ConfigPanel";
 import { TradeControls } from "../components/TradeControls";
 import { StatsDisplay } from "../components/StatsDisplay";
 import { HistoryTable } from "../components/HistoryTable";
-import { Button } from "../components/ui/button";
+import { BankManagement } from "../components/BankManagement";
+import { EvolutionChart } from "../components/EvolutionChart";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
   TrendingUp,
@@ -14,7 +16,7 @@ import {
   History,
   Home,
   Repeat,
-  Save,
+  Landmark,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConfig } from "@/contexts/ConfigContext";
@@ -53,37 +55,50 @@ export interface TradeOperation {
 
 type TradeMode = "real" | "training";
 
-const Index = () => {
+// 🔹 Componente interno que gerencia a sessão ativa (isolada por modo)
+const TradeSession = ({
+  mode,
+  onToggleMode,
+}: {
+  mode: TradeMode;
+  onToggleMode: () => void;
+}) => {
   const navigate = useNavigate();
-  // 🔹 Substituindo useState por useLocalStorageState para persistir os dados da sessão
-  const [bankroll, setBankroll] = useLocalStorageState("session:bankroll", 0);
+
+  // 🔹 Helper para gerar chaves de storage únicas por modo
+  const storageKey = (key: string) => `session:${mode}:${key}`;
+
+  const [bankroll, setBankroll] = useLocalStorageState(
+    storageKey("bankroll"),
+    0
+  );
   const [currentEntry, setCurrentEntry] = useLocalStorageState(
-    "session:currentEntry",
+    storageKey("currentEntry"),
     0
   );
   const [operations, setOperations] = useLocalStorageState<TradeOperation[]>(
-    "session:operations",
+    storageKey("operations"),
     []
   );
   const [totalProfit, setTotalProfit] = useLocalStorageState(
-    "session:totalProfit",
+    storageKey("totalProfit"),
     0
   );
   const [goalReached, setGoalReached] = useLocalStorageState(
-    "session:goalReached",
+    storageKey("goalReached"),
     false
   );
   const [stopLossReached, setStopLossReached] = useLocalStorageState(
-    "session:stopLossReached",
+    storageKey("stopLossReached"),
     false
   );
   const [isSessionSaved, setIsSessionSaved] = useLocalStorageState(
-    "session:isSessionSaved",
+    storageKey("isSessionSaved"),
     false
   );
-  const [tradeMode, setTradeMode] = useLocalStorageState<TradeMode>(
-    "session:tradeMode",
-    "real"
+  const [capitalAdjustment, setCapitalAdjustment] = useLocalStorageState(
+    storageKey("capitalAdjustment"),
+    0
   );
 
   // O usuário e o estado de carregamento agora são gerenciados por AuthContext e ProtectedRoute.
@@ -120,15 +135,19 @@ const Index = () => {
       }
 
       // Apenas define os valores iniciais se não houver operações salvas
-      if (operations.length === 0) {
+      if (operations.length === 0 && bankroll === 0) {
         setCurrentEntry(initialEntry);
         setBankroll(config.initialBankroll);
       }
     }
-  }, [config, operations.length, setBankroll, setCurrentEntry]);
+  }, [config, operations.length, setBankroll, setCurrentEntry, bankroll]);
 
   const saveDailyHistory = useCallback(
-    async (statusOverride?: "Meta" | "Stop") => {
+    async (
+      statusOverride?: "Meta" | "Stop",
+      profitOverride?: number,
+      bankrollOverride?: number
+    ) => {
       if (!config || !user) return;
 
       // não tenta salvar se não houver operações
@@ -196,16 +215,26 @@ const Index = () => {
 
         const sessionName = `Sessão ${sessionNumber}`;
 
+        // 🔹 Usa os valores sobrescritos (se fornecidos) ou os valores atuais das refs
+        const finalProfit =
+          profitOverride !== undefined
+            ? profitOverride
+            : totalProfitRef.current;
+        const finalBankroll =
+          bankrollOverride !== undefined
+            ? bankrollOverride
+            : bankrollRef.current;
+
         const sessionData = {
           user_id: user.id,
           data: today,
           sessao: sessionName,
           banca_inicial: config.initialBankroll,
-          banca_final: bankrollRef.current,
-          lucro_total: totalProfitRef.current,
+          banca_final: finalBankroll,
+          lucro_total: finalProfit,
           status,
           operacoes: JSON.stringify(safeOperations),
-          mode: tradeMode, // ⬅️ SALVANDO O MODO ATUAL
+          mode: mode, // ⬅️ SALVANDO O MODO ATUAL
         };
 
         // 🔹 Insere nova sessão no banco
@@ -234,8 +263,8 @@ const Index = () => {
           return;
         }
 
-        // 🔹 Prepara as operações individuais para inserção em lote
-        const individualOpsToSave = operationsRef.current.map((op) => ({
+        // 🔹 Prepara as operações individuais para inserção em lote (inverte para ordem cronológica)
+        const individualOpsToSave = [...operationsRef.current].reverse().map((op) => ({
           user_id: user.id,
           historico_id: newHistoricoId, // ⬅️ VINCULANDO A OPERAÇÃO À SESSÃO!
           entry_value: op.entryValue,
@@ -263,13 +292,13 @@ const Index = () => {
         toast.error("Erro inesperado ao salvar histórico. Ver console.");
       }
     },
-    [config, user, goalReached, stopLossReached, tradeMode, setIsSessionSaved]
+    [config, user, goalReached, stopLossReached, mode, setIsSessionSaved]
   );
 
   // 🔹 NOVA FUNÇÃO: Atualiza a banca inicial na configuração do usuário
   const updateInitialBankroll = useCallback(
     async (newBankroll: number) => {
-      if (!user || !config) return;
+      if (!user || !config || mode !== "real") return; // 🔹 Só atualiza config se for conta REAL
 
       // 🔹 CORREÇÃO: Arredonda o valor para duas casas decimais ANTES de salvar.
       const roundedNewBankroll = parseFloat(newBankroll.toFixed(2));
@@ -297,16 +326,73 @@ const Index = () => {
         );
       }
     },
-    [user, config, setGlobalConfig]
+    [user, config, setGlobalConfig, mode]
   );
+
+  const handleCapitalAdjustment = useCallback(
+    async (amount: number, type: "deposito" | "saque") => {
+      if (!user || !config || amount <= 0) return;
+
+      const adjustment = type === "deposito" ? amount : -amount;
+
+      if (type === "saque" && bankroll < amount) {
+        toast.error("Saldo insuficiente para realizar o saque.");
+        return;
+      }
+
+      // 1. Registra a transação no banco de dados
+      const { error: transactionError } = await supabase
+        .from("transacoes_banca")
+        .insert({
+          user_id: user.id,
+          tipo: type,
+          valor: amount,
+        });
+
+      if (transactionError) {
+        console.error(`Erro ao registrar ${type}:`, transactionError);
+        toast.error(`Falha ao registrar ${type}.`);
+        return;
+      }
+
+      // 2. Atualiza a banca e o ajuste de capital
+      const newBankroll = bankroll + adjustment;
+      const newCapitalAdjustment = capitalAdjustment + adjustment;
+      setBankroll(newBankroll);
+      setCapitalAdjustment(newCapitalAdjustment);
+
+      // 3. Atualiza a configuração de banca inicial para a PRÓXIMA sessão
+      updateInitialBankroll(newBankroll);
+
+      toast.success(
+        `🚀 ${
+          type === "deposito" ? "Depósito" : "Saque"
+        } de R$ ${amount.toFixed(2)} realizado com sucesso!`
+      );
+    },
+    [
+      user,
+      config,
+      bankroll,
+      capitalAdjustment,
+      setBankroll,
+      setCapitalAdjustment,
+      updateInitialBankroll,
+    ]
+  );
+
+  const handleDeposit = (amount: number) =>
+    handleCapitalAdjustment(amount, "deposito");
+  const handleWithdrawal = (amount: number) =>
+    handleCapitalAdjustment(amount, "saque");
 
   useEffect(() => {
     // 🔹 CORREÇÃO: Só verifica meta/stop se houver configuração E operações.
     if (!config || operations.length === 0) return;
 
     // Calcula lucro atual
-    // Usa bankrollRef para garantir o valor mais atualizado
-    let currentProfit = bankrollRef.current - config.initialBankroll;
+    // 🔹 CORREÇÃO: Usa 'bankroll' do estado atual, pois bankrollRef pode estar desatualizado neste ciclo
+    let currentProfit = bankroll - config.initialBankroll - capitalAdjustment;
     let adjustedBankroll = bankroll;
 
     // Limite de ganho e perda
@@ -337,8 +423,8 @@ const Index = () => {
       currentProfit = adjustedBankroll - config.initialBankroll;
       setBankroll(adjustedBankroll);
       setTotalProfit(currentProfit);
-      saveDailyHistory(status);
-      updateInitialBankroll(bankrollRef.current); // ⬅️ ATUALIZA A BANCA PARA A PRÓXIMA SESSÃO
+      saveDailyHistory(status, currentProfit, adjustedBankroll); // 🔹 Passa valores explícitos
+      updateInitialBankroll(adjustedBankroll); // ⬅️ ATUALIZA A BANCA PARA A PRÓXIMA SESSÃO
       return; // já finaliza o effect
     }
 
@@ -351,13 +437,9 @@ const Index = () => {
         { duration: 5000 }
       );
 
-      // Ajusta banca e lucro para refletir o stop loss
-      adjustedBankroll = config.initialBankroll - lossLimit;
-      currentProfit = -lossLimit;
-
       setBankroll(adjustedBankroll);
       setTotalProfit(currentProfit);
-      saveDailyHistory(status);
+      saveDailyHistory(status, currentProfit, adjustedBankroll); // 🔹 Passa valores explícitos
       updateInitialBankroll(adjustedBankroll); // ⬅️ ATUALIZA A BANCA PARA A PRÓXIMA SESSÃO
       return; // já finaliza o effect
     }
@@ -371,6 +453,7 @@ const Index = () => {
     stopLossReached,
     saveDailyHistory,
     operations.length,
+    capitalAdjustment,
     updateInitialBankroll, // ⬅️ Adicionando a nova dependência
     setBankroll,
     setGoalReached,
@@ -508,15 +591,17 @@ const Index = () => {
     setGoalReached(false);
     setStopLossReached(false);
     setIsSessionSaved(false);
+    setCapitalAdjustment(0);
 
     // 🔹 Limpa o localStorage para a próxima sessão
-    localStorage.removeItem("session:bankroll");
-    localStorage.removeItem("session:currentEntry");
-    localStorage.removeItem("session:operations");
-    localStorage.removeItem("session:totalProfit");
-    localStorage.removeItem("session:goalReached");
-    localStorage.removeItem("session:stopLossReached");
-    localStorage.removeItem("session:isSessionSaved");
+    localStorage.removeItem(storageKey("bankroll"));
+    localStorage.removeItem(storageKey("currentEntry"));
+    localStorage.removeItem(storageKey("operations"));
+    localStorage.removeItem(storageKey("totalProfit"));
+    localStorage.removeItem(storageKey("goalReached"));
+    localStorage.removeItem(storageKey("stopLossReached"));
+    localStorage.removeItem(storageKey("isSessionSaved"));
+    localStorage.removeItem(storageKey("capitalAdjustment"));
 
     toast.info("🔄 Banca resetada para novo dia de operações");
   };
@@ -536,7 +621,7 @@ const Index = () => {
 
   const handleClearHistory = () => {
     setOperations([]);
-    localStorage.removeItem("session:operations"); // Limpa também do localStorage
+    localStorage.removeItem(storageKey("operations")); // Limpa também do localStorage
     toast.info("🗑️ Histórico limpo");
   };
 
@@ -550,20 +635,16 @@ const Index = () => {
     navigate("/?fromApp=true"); // Navega para a landing page com um sinalizador
   };
 
-  const handleToggleMode = () => {
+  const handleToggleModeClick = async () => {
     // Salva a sessão atual antes de trocar de modo
     if (operations.length > 0 && !isSessionSaved) {
-      saveDailyHistory();
+      await saveDailyHistory();
     }
 
-    const newMode = tradeMode === "real" ? "training" : "real";
-    setTradeMode(newMode);
-
-    // Reseta o estado da calculadora para o novo modo
-    handleReset(false); // `false` para não salvar novamente
+    onToggleMode(); // Chama a função do pai para trocar o modo
 
     toast.info(
-      `Modo alterado para: ${newMode === "real" ? "Conta Real" : "Treinamento"}`
+      `Modo alterado para: ${mode === "real" ? "Treinamento" : "Conta Real"}`
     );
   };
 
@@ -633,7 +714,7 @@ const Index = () => {
                 {session?.user?.user_metadata?.name || session?.user?.email}!
               </p>
               <p className="text-lg font-medium text-muted-foreground mt-1">
-                {tradeMode === "real" ? "Conta Real" : "Conta de Treinamento"}
+                {mode === "real" ? "Conta Real" : "Conta de Treinamento"}
               </p>
             </div>
             <div className="flex-1 flex justify-end gap-2">
@@ -644,6 +725,16 @@ const Index = () => {
                 className="border-primary/20"
               >
                 <History className="w-4 h-4" />
+              </Button>
+              {/* Novo botão para Histórico de Transações */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => navigate("/historico-banca")}
+                className="border-primary/20"
+                title="Histórico de Transações"
+              >
+                <Landmark className="w-4 h-4" />
               </Button>
               <Button
                 variant="outline"
@@ -665,11 +756,11 @@ const Index = () => {
               </Button>
               {/* Botão para alternar modo */}
               <Button
-                variant={tradeMode === "training" ? "default" : "outline"}
+                variant={mode === "training" ? "default" : "outline"}
                 size="icon"
-                onClick={handleToggleMode}
+                onClick={handleToggleModeClick}
                 title={`Mudar para modo ${
-                  tradeMode === "real" ? "Treinamento" : "Real"
+                  mode === "real" ? "Treinamento" : "Real"
                 }`}
               >
                 <Repeat className="w-4 h-4" />
@@ -695,6 +786,17 @@ const Index = () => {
           stopLossReached={stopLossReached}
         />
 
+        <EvolutionChart
+          operations={operations}
+          initialBankroll={config.initialBankroll}
+        />
+
+        <BankManagement
+          onDeposit={handleDeposit}
+          onWithdraw={handleWithdrawal}
+          disabled={goalReached || stopLossReached}
+        />
+
         <TradeControls
           currentEntry={currentEntry}
           onWin={handleWin}
@@ -711,6 +813,24 @@ const Index = () => {
         />
       </div>
     </div>
+  );
+};
+
+// 🔹 Componente Principal que gerencia apenas o estado do modo
+const Index = () => {
+  const [tradeMode, setTradeMode] = useLocalStorageState<TradeMode>(
+    "session:tradeMode",
+    "real"
+  );
+
+  return (
+    <TradeSession
+      key={tradeMode} // 🔹 A chave força o React a recriar o componente quando o modo muda
+      mode={tradeMode}
+      onToggleMode={() =>
+        setTradeMode((prev) => (prev === "real" ? "training" : "real"))
+      }
+    />
   );
 };
 

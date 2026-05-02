@@ -1,22 +1,25 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
-import Landing from "./pages/Landing";
-import Index from "./pages/Index";
-import Settings from "@/pages/Settings";
-import Auth from "@/pages/Auth";
-import NotFound from "./pages/NotFound";
-import DailyHistory from "./pages/DailyHistory";
 import { supabase } from "./integrations/supabase/client"; // Ajuste o caminho se necessário
 import ProtectedRoute from "./components/ProtectedRoute"; // 🔹
 import { AuthProvider } from "./contexts/AuthContext"; // 🔹
 import { SubscriptionProvider } from "./contexts/SubscriptionContext"; // 🔹
 import { ConfigProvider } from "./contexts/ConfigContext";
-import TermsOfUse from "./pages/TermsOfUse";
-import PasswordReset from "./pages/PasswordReset";
+
+// 🔹 Lazy Loading para Code Splitting (Otimização de Build)
+const Landing = lazy(() => import("./pages/Landing"));
+const Index = lazy(() => import("./pages/Index"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Auth = lazy(() => import("./pages/Auth"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const DailyHistory = lazy(() => import("./pages/DailyHistory"));
+const TermsOfUse = lazy(() => import("./pages/TermsOfUse"));
+const TransactionHistory = lazy(() => import("./pages/TransactionHistory"));
+const PasswordReset = lazy(() => import("./pages/PasswordReset"));
 
 const queryClient = new QueryClient();
 
@@ -38,40 +41,56 @@ const AppRoutes = () => {
   }, [navigate]);
 
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/recuperar-senha" element={<PasswordReset />} />
-      <Route path="/update-password" element={<Auth />} />
-      <Route path="/termos-de-uso" element={<TermsOfUse />} />
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      }
+    >
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/recuperar-senha" element={<PasswordReset />} />
+        <Route path="/update-password" element={<Auth />} />
+        <Route path="/termos-de-uso" element={<TermsOfUse />} />
 
-      <Route
-        path="/app"
-        element={
-          <ProtectedRoute>
-            <Index />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <Settings />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/historico"
-        element={
-          <ProtectedRoute>
-            <DailyHistory />
-          </ProtectedRoute>
-        }
-      />
-      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+        <Route
+          path="/app"
+          element={
+            <ProtectedRoute>
+              <Index />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/historico"
+          element={
+            <ProtectedRoute>
+              <DailyHistory />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/historico-banca"
+          element={
+            <ProtectedRoute>
+              <TransactionHistory />
+            </ProtectedRoute>
+          }
+        />
+        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
   );
 };
 

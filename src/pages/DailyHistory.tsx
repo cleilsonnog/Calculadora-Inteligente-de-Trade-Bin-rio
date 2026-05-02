@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,7 @@ import {
   ArrowLeft,
   Calendar as CalendarIcon,
   TrendingUp,
+  TrendingDown,
   Repeat,
   Target,
   AlertCircle,
@@ -34,7 +36,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format, addDays } from "date-fns";
+import { format, addDays, subDays, startOfMonth, endOfMonth } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { ptBR } from "date-fns/locale";
 
@@ -63,6 +65,7 @@ interface IndividualOperation {
 
 const DailyHistory = () => {
   const [records, setRecords] = useState<HistoryRecord[]>([]);
+  const [allYearRecords, setAllYearRecords] = useState<HistoryRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(
     null
   );
@@ -81,8 +84,122 @@ const DailyHistory = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Calcula o resultado total com base nos registros filtrados
+  const totalResult = useMemo(() => {
+    return records.reduce((acc, record) => acc + record.lucro_total, 0);
+  }, [records]);
+
+  // 🔹 Agrupa os registros por mês para exibição
+  const groupedRecords = useMemo(() => {
+    const groups: {
+      [key: string]: { label: string; total: number; records: HistoryRecord[] };
+    } = {};
+
+    records.forEach((record) => {
+      // Garante o parsing correto da data
+      const dateObj = new Date(record.data.replace(/-/g, "/"));
+      const monthKey = format(dateObj, "yyyy-MM");
+      const monthLabel = format(dateObj, "MMMM yyyy", { locale: ptBR });
+
+      if (!groups[monthKey]) {
+        groups[monthKey] = {
+          label: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
+          total: 0,
+          records: [],
+        };
+      }
+
+      groups[monthKey].records.push(record);
+      groups[monthKey].total += record.lucro_total;
+    });
+
+    // Retorna array ordenado por data (mês mais recente primeiro)
+    return Object.keys(groups)
+      .sort((a, b) => b.localeCompare(a))
+      .map((key) => groups[key]);
+  }, [records]);
+
+  // Dados para o grafico do periodo (evolucao do lucro acumulado com base nos registros filtrados)
+  const periodChartData = useMemo(() => {
+    if (records.length === 0) return [];
+
+    const sorted = [...records].sort((a, b) => a.data.localeCompare(b.data));
+
+    let accumulated = 0;
+    return sorted.map((r) => {
+      accumulated += r.lucro_total;
+      const dateObj = new Date(r.data.replace(/-/g, "/"));
+      return {
+        name: format(dateObj, "dd/MM"),
+        lucro: accumulated,
+        sessao: r.sessao || "",
+      };
+    });
+  }, [records]);
+
+  // Dados para o grafico anual (evolucao mensal do lucro acumulado no ano)
+  const annualChartData = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear().toString();
+
+    const yearRecords = allYearRecords
+      .filter((r) => r.data.startsWith(currentYear))
+      .sort((a, b) => a.data.localeCompare(b.data));
+
+    if (yearRecords.length === 0) return [];
+
+    // Agrupa por mes
+    const monthlyTotals: { [key: string]: number } = {};
+    yearRecords.forEach((r) => {
+      const monthKey = r.data.substring(0, 7); // yyyy-MM
+      if (!monthlyTotals[monthKey]) monthlyTotals[monthKey] = 0;
+      monthlyTotals[monthKey] += r.lucro_total;
+    });
+
+    // Calcula acumulado
+    let accumulated = 0;
+    return Object.keys(monthlyTotals)
+      .sort()
+      .map((monthKey) => {
+        accumulated += monthlyTotals[monthKey];
+        const dateObj = new Date(monthKey + "/01");
+        return {
+          name: format(dateObj, "MMM", { locale: ptBR }),
+          lucro: accumulated,
+        };
+      });
+  }, [allYearRecords]);
+
+  const fetchYearRecords = async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const currentYear = new Date().getFullYear();
+      let query = supabase
+        .from("historico_operacoes")
+        .select("id, data, banca_inicial, banca_final, lucro_total, status, observacoes, user_id, sessao")
+        .eq("user_id", user.id)
+        .gte("data", `${currentYear}-01-01`)
+        .lte("data", `${currentYear}-12-31`);
+
+      if (modeFilter !== "all") {
+        query = query.eq("mode", modeFilter);
+      }
+
+      const { data, error } = await query.order("data", { ascending: true });
+      if (error) throw error;
+      setAllYearRecords(data || []);
+    } catch (error) {
+      console.error("Error fetching year records:", error);
+    }
+  };
+
   useEffect(() => {
     fetchHistory();
+    fetchYearRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, modeFilter]); // ⬅️ Refetch when date range or mode changes
 
@@ -160,11 +277,22 @@ const DailyHistory = () => {
 
       if (error) throw error;
 
-      setIndividualOps(
-        (data || []).map((op) => ({
-          ...op,
-          result: op.result === "win" ? "win" : "loss",
-        }))
+      let ops = (data || []).map((op) => ({
+        ...op,
+        result: op.result === "win" ? ("win" as const) : ("loss" as const),
+      }));
+
+      // Detecta se a ordem esta invertida (sessoes salvas antes da correcao)
+      // Se a ultima operacao esta mais proxima da banca_inicial que a primeira, inverte
+      if (ops.length > 1 && selectedRecord) {
+        const firstDiff = Math.abs(ops[0].bankroll_after - selectedRecord.banca_inicial);
+        const lastDiff = Math.abs(ops[ops.length - 1].bankroll_after - selectedRecord.banca_inicial);
+        if (lastDiff < firstDiff) {
+          ops = ops.reverse();
+        }
+      }
+
+      setIndividualOps(ops
       );
     } catch (error) {
       console.error("Error fetching individual operations:", error);
@@ -350,31 +478,144 @@ const DailyHistory = () => {
                     !date && "text-muted-foreground"
                   )}
                 >
-                  <Filter className="mr-2 h-4 w-4" />
+                  <CalendarIcon className="mr-2 h-4 w-4" />
                   {date?.from ? (
                     date.to ? (
                       <>
-                        {format(date.from, "LLL dd, y")} -{" "}
-                        {format(date.to, "LLL dd, y")}
+                        {format(date.from, "dd/MM/y")} -{" "}
+                        {format(date.to, "dd/MM/y")}
                       </>
                     ) : (
-                      format(date.from, "LLL dd, y")
+                      format(date.from, "dd/MM/y")
                     )
                   ) : (
-                    <span>Filtrar por período</span>
+                    <span>Filtrar por data</span>
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <CalendarComponent
-                  initialFocus
-                  mode="range"
-                  defaultMonth={date?.from}
-                  selected={date}
-                  onSelect={setDate}
-                  numberOfMonths={2}
-                  locale={ptBR}
-                />
+              <PopoverContent className="w-auto p-0" align="start">
+                <div className="flex flex-col sm:flex-row">
+                  <div className="flex flex-col gap-1 p-2 border-r border-border min-w-[150px]">
+                    <span className="text-xs font-semibold text-muted-foreground px-2 py-1">
+                      Por Dia
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start font-normal"
+                      onClick={() => {
+                        const today = new Date();
+                        setDate({ from: today, to: today });
+                      }}
+                    >
+                      Hoje
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start font-normal"
+                      onClick={() => {
+                        const yesterday = subDays(new Date(), 1);
+                        setDate({ from: yesterday, to: yesterday });
+                      }}
+                    >
+                      Ontem
+                    </Button>
+
+                    <span className="text-xs font-semibold text-muted-foreground px-2 py-1 mt-2">
+                      Por Mes
+                    </span>
+                    <div className="flex gap-1 px-1">
+                      <select
+                        className="flex-1 text-xs rounded border border-border bg-background px-1 py-1"
+                        id="month-select"
+                        defaultValue={new Date().getMonth()}
+                        onChange={(e) => {
+                          const monthSelect = e.target;
+                          const yearSelect = document.getElementById("year-select") as HTMLSelectElement;
+                          const month = parseInt(monthSelect.value);
+                          const year = parseInt(yearSelect.value);
+                          const from = new Date(year, month, 1);
+                          const to = endOfMonth(from);
+                          setDate({ from, to });
+                        }}
+                      >
+                        {["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"].map((m, i) => (
+                          <option key={i} value={i}>{m}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="text-xs rounded border border-border bg-background px-1 py-1"
+                        id="year-select"
+                        defaultValue={new Date().getFullYear()}
+                        onChange={(e) => {
+                          const yearSelect = e.target;
+                          const monthSelect = document.getElementById("month-select") as HTMLSelectElement;
+                          const month = parseInt(monthSelect.value);
+                          const year = parseInt(yearSelect.value);
+                          const from = new Date(year, month, 1);
+                          const to = endOfMonth(from);
+                          setDate({ from, to });
+                        }}
+                      >
+                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <span className="text-xs font-semibold text-muted-foreground px-2 py-1 mt-2">
+                      Por Periodo
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start font-normal"
+                      onClick={() => {
+                        const today = new Date();
+                        setDate({ from: subDays(today, 6), to: today });
+                      }}
+                    >
+                      Ultimos 7 dias
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start font-normal"
+                      onClick={() => {
+                        const today = new Date();
+                        setDate({ from: subDays(today, 29), to: today });
+                      }}
+                    >
+                      Ultimos 30 dias
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start font-normal"
+                      onClick={() => {
+                        const today = new Date();
+                        setDate({
+                          from: startOfMonth(today),
+                          to: endOfMonth(today),
+                        });
+                      }}
+                    >
+                      Este Mes
+                    </Button>
+                  </div>
+                  <div className="p-0">
+                    <CalendarComponent
+                      initialFocus
+                      mode="range"
+                      defaultMonth={date?.from}
+                      selected={date}
+                      onSelect={setDate}
+                      numberOfMonths={1}
+                      locale={ptBR}
+                    />
+                  </div>
+                </div>
               </PopoverContent>
             </Popover>
             {date && (
@@ -411,6 +652,144 @@ const DailyHistory = () => {
           </Button>
         </div>
 
+        {/* 🔹 RESULTADO TOTAL DO PERÍODO */}
+        <div className="mb-6">
+          <Card
+            className={cn(
+              "border-l-4 shadow-sm",
+              totalResult >= 0 ? "border-l-green-500" : "border-l-red-500"
+            )}
+          >
+            <CardContent className="p-6 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">
+                  Resultado do Período
+                </p>
+                <p
+                  className={cn(
+                    "text-3xl font-bold font-mono-numbers",
+                    totalResult >= 0 ? "text-green-500" : "text-red-500"
+                  )}
+                >
+                  {totalResult >= 0 ? "+" : ""}
+                  {formatCurrency(totalResult)}
+                </p>
+              </div>
+              <div
+                className={cn(
+                  "p-3 rounded-full",
+                  totalResult >= 0 ? "bg-green-500/10" : "bg-red-500/10"
+                )}
+              >
+                {totalResult >= 0 ? (
+                  <TrendingUp className="w-8 h-8 text-green-500" />
+                ) : (
+                  <TrendingDown className="w-8 h-8 text-red-500" />
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* GRAFICOS DE EVOLUCAO MENSAL E ANUAL */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          {/* Grafico do Periodo */}
+          <Card className="border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                Evolucao do Periodo (Lucro Acumulado)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {periodChartData.length > 0 ? (
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={periodChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        stroke="hsl(var(--muted-foreground))"
+                        tickFormatter={(v) => `R$${v.toFixed(0)}`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                        }}
+                        formatter={(value: number) => [`R$ ${value.toFixed(2)}`, "Lucro Acumulado"]}
+                      />
+                      <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" opacity={0.5} />
+                      <Line
+                        type="monotone"
+                        dataKey="lucro"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: "hsl(var(--primary))" }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Nenhuma operacao no periodo selecionado.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Grafico Anual */}
+          <Card className="border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                Evolucao Anual (Lucro Acumulado)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {annualChartData.length > 0 ? (
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={annualChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        stroke="hsl(var(--muted-foreground))"
+                        tickFormatter={(v) => `R$${v.toFixed(0)}`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                        }}
+                        formatter={(value: number) => [`R$ ${value.toFixed(2)}`, "Lucro Acumulado"]}
+                      />
+                      <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" opacity={0.5} />
+                      <Line
+                        type="monotone"
+                        dataKey="lucro"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        dot={{ r: 4, fill: "hsl(var(--primary))" }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Nenhuma operacao neste ano ainda.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
         {records.length === 0 ? (
           <Card className="animate-fade-in">
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -424,75 +803,101 @@ const DailyHistory = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 animate-fade-in">
-            {records.map((record, index) => {
-              const statusConfig = getStatusConfig(record.status);
-              const StatusIcon = statusConfig.icon;
+          <div className="space-y-8 animate-fade-in">
+            {groupedRecords.map((group) => (
+              <div key={group.label} className="space-y-4">
+                {/* CABEÇALHO DO MÊS */}
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
+                    <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+                    {group.label}
+                  </h2>
+                  <span
+                    className={cn(
+                      "text-lg font-bold font-mono-numbers",
+                      group.total >= 0 ? "text-green-500" : "text-red-500"
+                    )}
+                  >
+                    {group.total >= 0 ? "+" : ""}
+                    {formatCurrency(group.total)}
+                  </span>
+                </div>
 
-              return (
-                <Card
-                  key={record.id}
-                  className={`cursor-pointer transition-all hover-scale animate-fade-in border ${statusConfig.bgColor}`}
-                  style={{ animationDelay: `${index * 0.05}s` }}
-                  onClick={() => {
-                    setSelectedRecord(record);
-                    fetchIndividualOperations(record.id); // ⬅️ BUSCA AS OPERAÇÕES AO CLICAR
-                  }}
-                >
-                  <CardHeader>
-                    <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-lg">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                        <div className="flex items-center gap-2">
-                          <CalendarIcon className="h-4 w-4" />
-                          {/* 🔹 CORREÇÃO: Substitui hífens por barras para evitar problemas de fuso horário (UTC) */}
-                          {format(
-                            new Date(record.data.replace(/-/g, "/")),
-                            "dd/MM/yyyy"
-                          )}
-                        </div>
-                        {/* 🔹 Sessão aparece ao lado ou abaixo da data */}
-                        {record.sessao && (
-                          <span className="text-sm text-muted-foreground">
-                            {record.sessao}
-                          </span>
-                        )}
-                      </div>
+                {/* GRID DE CARDS DO MÊS */}
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {group.records.map((record, index) => {
+                    const statusConfig = getStatusConfig(record.status);
+                    const StatusIcon = statusConfig.icon;
 
-                      <StatusIcon className={`h-5 w-5 ${statusConfig.color}`} />
-                    </CardTitle>
-                  </CardHeader>
+                    return (
+                      <Card
+                        key={record.id}
+                        className={`cursor-pointer transition-all hover-scale animate-fade-in border ${statusConfig.bgColor}`}
+                        style={{ animationDelay: `${index * 0.05}s` }}
+                        onClick={() => {
+                          setSelectedRecord(record);
+                          fetchIndividualOperations(record.id); // ⬅️ BUSCA AS OPERAÇÕES AO CLICAR
+                        }}
+                      >
+                        <CardHeader>
+                          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-lg">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                              <div className="flex items-center gap-2">
+                                <CalendarIcon className="h-4 w-4" />
+                                {/* 🔹 CORREÇÃO: Substitui hífens por barras para evitar problemas de fuso horário (UTC) */}
+                                {format(
+                                  new Date(record.data.replace(/-/g, "/")),
+                                  "dd/MM/yyyy"
+                                )}
+                              </div>
+                              {/* 🔹 Sessão aparece ao lado ou abaixo da data */}
+                              {record.sessao && (
+                                <span className="text-sm text-muted-foreground">
+                                  {record.sessao}
+                                </span>
+                              )}
+                            </div>
 
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          Lucro:
-                        </span>
-                        <span
-                          className={`font-bold ${
-                            record.lucro_total >= 0
-                              ? "text-green-500"
-                              : "text-red-500"
-                          }`}
-                        >
-                          {formatCurrency(record.lucro_total)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          Status:
-                        </span>
-                        <span
-                          className={`text-sm font-medium ${statusConfig.color}`}
-                        >
-                          {statusConfig.label}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                            <StatusIcon
+                              className={`h-5 w-5 ${statusConfig.color}`}
+                            />
+                          </CardTitle>
+                        </CardHeader>
+
+                        <CardContent>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">
+                                Lucro:
+                              </span>
+                              <span
+                                className={`font-bold ${
+                                  record.lucro_total >= 0
+                                    ? "text-green-500"
+                                    : "text-red-500"
+                                }`}
+                              >
+                                {formatCurrency(record.lucro_total)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">
+                                Status:
+                              </span>
+                              <span
+                                className={`text-sm font-medium ${statusConfig.color}`}
+                              >
+                                {statusConfig.label}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -582,6 +987,60 @@ const DailyHistory = () => {
                     {isSavingObservation ? "Salvando..." : "Salvar Observação"}
                   </Button>
                 </div>
+
+                {/* GRAFICO DE EVOLUCAO DA SESSAO */}
+                {!loadingOps && individualOps.length > 0 && (
+                  <div className="pt-4 border-t border-border">
+                    <h4 className="text-sm font-semibold mb-3">
+                      Evolucao da Banca
+                    </h4>
+                    <div className="h-[180px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={[
+                            { name: "Inicio", banca: selectedRecord.banca_inicial },
+                            ...individualOps.map((op, i) => ({
+                              name: `#${i + 1}`,
+                              banca: op.bankroll_after,
+                            })),
+                          ]}
+                          margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                          <YAxis
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                            tickFormatter={(v) => `R$${v.toFixed(0)}`}
+                            domain={["dataMin - 10", "dataMax + 10"]}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "hsl(var(--card))",
+                              border: "1px solid hsl(var(--border))",
+                              borderRadius: "8px",
+                            }}
+                            formatter={(value: number) => [`R$ ${value.toFixed(2)}`, "Banca"]}
+                          />
+                          <ReferenceLine
+                            y={selectedRecord.banca_inicial}
+                            stroke="hsl(var(--muted-foreground))"
+                            strokeDasharray="3 3"
+                            opacity={0.5}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="banca"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth={2}
+                            dot={{ r: 3, fill: "hsl(var(--primary))" }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
 
                 {/* SEÇÃO PARA OPERAÇÕES INDIVIDUAIS */}
                 <div className="pt-4 border-t border-border">
