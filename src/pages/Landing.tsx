@@ -75,6 +75,7 @@ const Landing = () => {
         .select("*, prices(*)")
         .eq("active", true)
         .eq("prices.active", true)
+        .ilike("name", "%calculadora trade%")
         .order("name");
 
       if (error) {

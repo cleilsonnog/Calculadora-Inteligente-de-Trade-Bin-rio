@@ -28,3 +28,6 @@ dist-ssr
 
 # Deploy
 deploy.sh
+
+# Crisa tabela Profiles
+.supabase_profiles.sql
