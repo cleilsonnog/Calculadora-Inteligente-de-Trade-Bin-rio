@@ -119,11 +119,18 @@ const DailyHistory = () => {
       .map((key) => groups[key]);
   }, [records]);
 
-  // Dados para o grafico do periodo (evolucao do lucro acumulado com base nos registros filtrados)
+  // Dados para o grafico do periodo (evolucao do lucro acumulado)
+  // Se nenhum filtro aplicado, mostra apenas o mes atual
   const periodChartData = useMemo(() => {
-    if (records.length === 0) return [];
+    const sourceRecords = date ? records : records.filter((r) => {
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      return r.data.startsWith(currentMonth);
+    });
 
-    const sorted = [...records].sort((a, b) => a.data.localeCompare(b.data));
+    if (sourceRecords.length === 0) return [];
+
+    const sorted = [...sourceRecords].sort((a, b) => a.data.localeCompare(b.data));
 
     let accumulated = 0;
     return sorted.map((r) => {
@@ -135,7 +142,7 @@ const DailyHistory = () => {
         sessao: r.sessao || "",
       };
     });
-  }, [records]);
+  }, [records, date]);
 
   // Dados para o grafico anual (evolucao mensal do lucro acumulado no ano)
   const annualChartData = useMemo(() => {
@@ -698,7 +705,7 @@ const DailyHistory = () => {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-primary" />
-                Evolucao do Periodo (Lucro Acumulado)
+                {date ? "Evolucao do Periodo (Lucro Acumulado)" : "Evolucao do Mes Atual (Lucro Acumulado)"}
               </CardTitle>
             </CardHeader>
             <CardContent>
